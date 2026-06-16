@@ -27,6 +27,7 @@ class IdMapper:
         self.hgnc_path = Path(hgnc_path)
         self._ensembl_to_symbol: dict[str, str] = {}
         self._symbol_to_ensembl: dict[str, str] = {}
+        self._symbol_to_uniprot: dict[str, str] = {}
         self._loaded = False
 
     def _load(self) -> None:
@@ -41,16 +42,21 @@ class IdMapper:
             self.hgnc_path,
             sep="\t",
             dtype=str,
-            usecols=["symbol", "ensembl_gene_id"],
+            usecols=["symbol", "ensembl_gene_id", "uniprot_ids"],
             low_memory=False,
         )
         df = df.dropna(subset=["symbol", "ensembl_gene_id"])
         df = df[df["ensembl_gene_id"].str.strip() != ""]
-        for symbol, ensembl in zip(df["symbol"], df["ensembl_gene_id"]):
+        for symbol, ensembl, uniprot in zip(
+            df["symbol"], df["ensembl_gene_id"], df["uniprot_ids"]
+        ):
             ensembl = strip_version(ensembl.strip())
             symbol = symbol.strip()
             self._ensembl_to_symbol[ensembl] = symbol
             self._symbol_to_ensembl[symbol] = ensembl
+            # uniprot_ids may be pipe-separated; take the first (canonical) entry.
+            if isinstance(uniprot, str) and uniprot.strip():
+                self._symbol_to_uniprot[symbol] = uniprot.split("|")[0].strip()
         self._loaded = True
 
     def ensembl_to_hgnc(self, ensembl_id: str) -> str | None:
@@ -62,3 +68,12 @@ class IdMapper:
         """Return the Ensembl gene ID for an HGNC symbol."""
         self._load()
         return self._symbol_to_ensembl.get(symbol)
+
+    def hgnc_to_uniprot(self, symbol: str) -> str | None:
+        """Return the canonical UniProt accession for an HGNC symbol, or None.
+
+        HGNC's ``uniprot_ids`` may list several pipe-separated accessions; the
+        first is taken as canonical (ADR-0004).
+        """
+        self._load()
+        return self._symbol_to_uniprot.get(symbol)

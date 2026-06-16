@@ -4,8 +4,9 @@
 # Idempotent: files already present (non-empty) are skipped. Re-run safely.
 #
 # Sources:
-#   HGNC          gene symbols + Ensembl ID mapping
+#   HGNC          gene symbols + Ensembl ID mapping (+ uniprot_ids)
 #   GENCODE v46   gene + transcript structure (GTF)
+#   GENCODE v46   SwissProt metadata: transcript (ENST) -> UniProt (ADR-0004)
 #   GTEx v10      tissue median TPM (GCT)
 #   DoRothEA      TF -> target regulons with confidence tiers
 
@@ -24,6 +25,7 @@ mkdir -p "${RAW_DIR}"
 SOURCES=(
   "hgnc_complete_set.txt|https://storage.googleapis.com/public-download-files/hgnc/tsv/tsv/hgnc_complete_set.txt"
   "gencode.v46.annotation.gtf.gz|https://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/release_46/gencode.v46.annotation.gtf.gz"
+  "gencode.v46.metadata.SwissProt.gz|https://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/release_46/gencode.v46.metadata.SwissProt.gz"
   "GTEx_Analysis_v10_RNASeQCv2.4.2_gene_median_tpm.gct.gz|https://storage.googleapis.com/adult-gtex/bulk-gex/v10/rna-seq/GTEx_Analysis_v10_RNASeQCv2.4.2_gene_median_tpm.gct.gz"
   "dorothea_hs.rda|https://raw.githubusercontent.com/saezlab/dorothea/master/data/dorothea_hs.rda"
 )

@@ -1,9 +1,11 @@
 """ETL 04 — Load DoRothEA TF -> target REGULATES edges.
 
-Reads DoRothEA regulons and MERGEs a (:Gene)-[:REGULATES]->(:Gene) edge for each
-TF/target pair in the configured confidence tiers, when BOTH genes already exist
-as nodes (matched by hgnc_symbol). Idempotent; re-runs update edge attributes but
-preserve any citation work done by the CitationAgent.
+Reads DoRothEA regulons and MERGEs a (:Protein)-[:REGULATES]->(:Gene) edge for
+each TF/target pair in the configured confidence tiers, when the TF **Protein**
+(minted by 05_proteins.py) and the target **Gene** already exist (matched by
+hgnc_symbol). REGULATES is protein-sourced post-ADR-0004, so 05_proteins.py must
+run first. Idempotent; re-runs update edge attributes but preserve any citation
+work done by the CitationAgent.
 
 Data source reality (see docs/adr/0003-data-source-urls.md):
   - DoRothEA no longer ships a CSV; we read data/raw/dorothea_hs.rda via pyreadr.
@@ -42,7 +44,7 @@ CONFIDENCE_VALUES = {"A": 1.0, "B": 0.85, "C": 0.7, "D": 0.5, "E": 0.25}
 
 MERGE_QUERY = """
 UNWIND $rows AS row
-MATCH (s:Gene {hgnc_symbol: row.tf})
+MATCH (s:Protein {hgnc_symbol: row.tf})
 MATCH (t:Gene {hgnc_symbol: row.target})
 MERGE (s)-[r:REGULATES]->(t)
 ON CREATE SET r.mode = row.mode,
@@ -109,17 +111,27 @@ def main() -> None:
     created = 0
     touched = 0
     with get_session() as session:
-        # Distinct symbols not present as Gene nodes (reported, not loaded).
-        symbols = sorted({r["tf"] for r in rows} | {r["target"] for r in rows})
-        present: set[str] = set()
-        for i in range(0, len(symbols), 5000):
-            chunk = symbols[i : i + 5000]
-            rec = session.run(
-                "MATCH (g:Gene) WHERE g.hgnc_symbol IN $s RETURN collect(g.hgnc_symbol) AS f",
-                s=chunk,
-            ).single()
-            present.update(rec["f"])
-        symbols_not_found = len(symbols) - len(present)
+        # TF symbols absent as Protein nodes, and target symbols absent as Gene
+        # nodes (reported, not loaded). Post-ADR-0004 the TF side is a Protein.
+        def _present(label: str, syms: list[str]) -> set[str]:
+            found: set[str] = set()
+            for i in range(0, len(syms), 5000):
+                rec = session.run(
+                    f"MATCH (n:{label}) WHERE n.hgnc_symbol IN $s "
+                    "RETURN collect(n.hgnc_symbol) AS f",
+                    s=syms[i : i + 5000],
+                ).single()
+                found.update(rec["f"])
+            return found
+
+        tf_syms = sorted({r["tf"] for r in rows})
+        target_syms = sorted({r["target"] for r in rows})
+        tf_present = _present("Protein", tf_syms)
+        target_present = _present("Gene", target_syms)
+        symbols_not_found = (len(tf_syms) - len(tf_present)) + (
+            len(target_syms) - len(target_present)
+        )
+        symbols = tf_syms + target_syms
 
         for i in range(0, total, BATCH_SIZE):
             batch = rows[i : i + BATCH_SIZE]
@@ -136,7 +148,9 @@ def main() -> None:
     print(f"REGULATES edges merged (existing, updated): {merged}")
     print(f"Rows skipped (a TF/target gene missing): {skipped}")
     print(
-        f"Distinct symbols not found as Gene nodes: {symbols_not_found}/{len(symbols)}"
+        f"Symbols not matched ({symbols_not_found}/{len(symbols)}): "
+        f"TF→Protein missing {len(tf_syms) - len(tf_present)}, "
+        f"target→Gene missing {len(target_syms) - len(target_present)}"
     )
     print(f"Time elapsed: {elapsed:.1f}s")
     close_driver()
