@@ -53,7 +53,7 @@ user question
 ```json
 {
   "answer": "Three TFs repress TP53 in liver: MDM2 (confidence 0.94), ...",
-  "cypher": "MATCH (tf:Gene)-[r:REGULATES]->...",
+  "cypher": "MATCH (tf:Protein)-[r:REGULATES]->(target:Gene)...",
   "results": [...],
   "citations": ["12345678", "23456789"]
 }
@@ -78,7 +78,10 @@ user question
 
 **Trigger:** Nightly cron (00:00 UTC). Also triggerable manually via `POST /admin/agents/citation/run`.
 
-**Input:** Graph edges where `pmids = []`, batched 100/run.
+**Input:** `REGULATES` edges where `pmids = []`, batched 100/run. (Post-ADR-0004
+these are `(:Protein)-[:REGULATES]->(:Gene)`; the source's `hgnc_symbol` still
+drives the PubMed query, so the flow below is unchanged — only the node-label
+match in `_fetch_uncited_edges` moves from `:Gene` to `:Protein`.)
 
 **Flow:**
 ```

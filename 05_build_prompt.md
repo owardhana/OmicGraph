@@ -1,5 +1,12 @@
 # OmniGraph — Fable 5 Build Prompt
 
+> ⚠️ **Historical build artifact — not maintained.** This was the one-shot prompt
+> used to scaffold the initial MVP. It predates the 2026-06-15 remodel and is
+> **superseded by ADRs 0004–0006** (TF→Protein/proteomics layer, signal-decay
+> traversal, tissue-as-opacity) and the current [01_vision.md](01_vision.md) /
+> [02_mvp.md](02_mvp.md) / [04_decisions.md](04_decisions.md) / [CONTEXT.md](CONTEXT.md).
+> Treat those as the source of truth; do not follow this file for new work.
+
 Copy everything between the triple-backtick fences into a new Claude Code session
 opened at /Users/oliverwardhana/Desktop/Project_OMNI, then run /loop.
 

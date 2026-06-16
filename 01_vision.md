@@ -24,13 +24,17 @@ Visualized as stacked planes (graphite structure):
 
 ```
 [ Metabolomics ]   ← layer 4 (future)
-[ Proteomics   ]   ← layer 3 (future)
+[ Proteomics   ]   ← layer 3 (MVP: transcription-factor slice only; full proteome future)
 [ Transcriptomics ]← layer 2 (MVP)
 [ Genomics     ]   ← layer 1 (MVP)
 ```
 
-Intra-layer edges = horizontal (e.g. TF → target gene, within genomics layer)
-Inter-layer edges = vertical (e.g. gene → transcript, crossing layers)
+Intra-layer edges = horizontal (e.g. protein → protein interaction, within proteomics layer — future)
+Inter-layer edges = vertical, e.g. gene → transcript (PRODUCES), transcript → protein (TRANSLATES_TO), and **protein → gene (REGULATES, a TF acting downward on a gene)**.
+
+> Transcription factors are **proteins**, so they live in the proteomics layer and
+> regulate genes via a downward vertical edge — not gene→gene within genomics. See
+> [ADR-0004](docs/adr/0004-transcription-factors-as-proteins.md) and [CONTEXT.md](CONTEXT.md).
 
 Each node and edge carries tissue context. Same gene, different behavior in liver vs brain vs blood — the graph shows both.
 
@@ -40,20 +44,28 @@ Each node and edge carries tissue context. Same gene, different behavior in live
 |-------|-----------|-----------|---------|
 | Genomics | Gene | Ensembl (ENSG) | TP53, BRCA2 |
 | Transcriptomics | Transcript | Ensembl (ENST) | TP53-201, TP53-202 |
-| Proteomics | Protein | UniProt | P04637 |
+| Proteomics | Protein | UniProt | P04637 (`TP53 (protein)`) |
 | Metabolomics | Metabolite | HMDB / ChEBI | Pyruvate |
-| Regulatory | Transcription Factor | Ensembl (ENSG) | SP1, GATA1 |
+
+A **transcription factor** is not its own node type — it is a **Protein subtype**
+(`subtype = transcription_factor`) in the proteomics layer, distinguished by color.
+Examples: SP1 (P08047), GATA1 (P15976). Other subtypes (enzyme, structural) are
+future. Node kind is carried by `entity_kind ∈ {gene, transcript, protein}`.
 
 ## Edge types (full vision)
 
-| Edge | Meaning | Direction | Source |
-|------|---------|-----------|--------|
-| TF → Gene | Regulatory binding, activates/represses | Directed | DoRothEA, ENCODE |
-| Gene → Transcript | Splicing, produces isoform | Directed | GENCODE, GTEx |
-| Transcript → Protein | Translation | Directed | UniProt, Ribo-seq |
-| Protein → Protein | Binding, signaling, phosphorylation | Directed/undirected | STRING, PhosphoSitePlus |
-| Protein → Metabolite | Enzymatic reaction | Directed | KEGG, Recon3D |
-| Gene ~ Gene | Co-expression (labeled separately) | Undirected | GTEx, TCGA |
+| Edge | Label | Meaning | Direction | Source |
+|------|-------|---------|-----------|--------|
+| Protein(TF) → Gene | `REGULATES` | Regulatory binding, activates/represses (the TF **protein** acts on a gene) | Directed, downward | DoRothEA, ENCODE |
+| Gene → Transcript | `PRODUCES` | Splicing, produces isoform | Directed, upward | GENCODE, GTEx |
+| Transcript → Protein | `TRANSLATES_TO` | Translation (primary protein link) | Directed, upward | GENCODE SwissProt metadata |
+| Gene → Protein | `ENCODES` | Fallback protein link when transcript absent | Directed, upward | HGNC `uniprot_ids` |
+| Protein → Protein | _(future)_ | Binding, signaling, phosphorylation | Directed/undirected | STRING, PhosphoSitePlus |
+| Protein → Metabolite | _(future)_ | Enzymatic reaction | Directed | KEGG, Recon3D |
+| Gene ~ Gene | _(future)_ | Co-expression (labeled separately) | Undirected | GTEx, TCGA |
+
+MVP edges: `REGULATES`, `PRODUCES`, `TRANSLATES_TO`/`ENCODES` (TF slice). The rest
+are full-vision/future.
 
 Every edge carries:
 - `type` — what the relationship is

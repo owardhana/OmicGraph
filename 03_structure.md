@@ -28,10 +28,11 @@ Project_OMNI/
 │   ├── 01_hgnc.py                   ← gene nodes + ID mapping
 │   ├── 02_gencode.py                ← gene + transcript nodes, PRODUCES edges
 │   ├── 03_gtex.py                   ← tissue weights onto PRODUCES edges
-│   ├── 04_dorothea.py               ← TF→gene REGULATES edges
+│   ├── 05_proteins.py               ← TF Protein nodes + TRANSLATES_TO/ENCODES (runs before 04)
+│   ├── 04_dorothea.py               ← Protein(TF)→Gene REGULATES edges
 │   └── utils/
 │       ├── neo4j_client.py          ← shared Neo4j connection
-│       └── id_mapper.py             ← Ensembl ↔ HGNC ↔ Entrez mapping
+│       └── id_mapper.py             ← Ensembl ↔ HGNC ↔ UniProt mapping
 │
 ├── backend/
 │   ├── Dockerfile

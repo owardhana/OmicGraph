@@ -13,19 +13,22 @@ Success = user queries a gene, sees 3D graph of TF regulators + transcripts acro
 
 - Gene nodes (Ensembl ID, HGNC symbol, description)
 - Transcript nodes (Ensembl TX ID, biotype)
-- TF → Gene edges (DoRothEA A-B confidence, directed, regulatory)
-- Gene → Transcript edges (GENCODE structure + GTEx tissue weights)
+- **Protein nodes — transcription-factor slice only** (UniProt ID; `entity_kind=protein`, `subtype=transcription_factor`). See [ADR-0004](docs/adr/0004-transcription-factors-as-proteins.md).
+- **Protein(TF) → Gene** `REGULATES` edges (DoRothEA A-B confidence, directed, downward proteomics→genomics)
+- Gene → Transcript `PRODUCES` edges (GENCODE structure + GTEx tissue weights)
+- **Transcript → Protein `TRANSLATES_TO`** (primary) / **Gene → Protein `ENCODES`** (fallback) — tie a TF protein to its molecule
 - 3 tissues: whole blood, liver, brain (prefrontal cortex)
-- 3D layered visualization (genomics layer Z=0, transcriptomics Z=1)
+- 3D layered visualization — **three layers**: genomics, transcriptomics, proteomics (exact Z/colors set by UI tasks)
 - Gene/TF search by HGNC symbol
-- Neighborhood traversal (1-2 hops)
+- **Signal-decay traversal** (confidence-gated, user hard cap) — replaces fixed 1-2 hop bound. See [ADR-0005](docs/adr/0005-signal-decay-traversal.md).
 - Edge detail panel (type, confidence, tissue weights, PMIDs)
 - Text2Cypher query (natural language → Cypher → result)
 - Citation agent (PubMed PMID attachment to existing edges)
 
 ### Out of scope (MVP)
 
-- Protein / metabolite layers
+- **Full proteome** (non-TF proteins) / metabolite layer
+- Protein → Protein and Protein → Metabolite edges
 - Cancer or perturbation data
 - New edge extraction by agent (topology creation)
 - Vector RAG
@@ -39,13 +42,16 @@ Success = user queries a gene, sees 3D graph of TF regulators + transcripts acro
 
 | Source | Data loaded | Format | Script |
 |--------|------------|--------|--------|
-| HGNC | Gene symbols + ID mapping | TSV (download) | `etl/01_hgnc.py` |
+| HGNC | Gene symbols + ID mapping + `uniprot_ids` (→ Protein) | TSV (download) | `etl/01_hgnc.py` |
 | GENCODE v46 | Gene + transcript structure | GTF | `etl/02_gencode.py` |
+| GENCODE v46 SwissProt metadata | ENST → UniProt (`TRANSLATES_TO`) | `metadata.SwissProt.gz` | `etl/05_proteins.py` |
 | GTEx v10 | Tissue expression weights (blood/liver/brain) | median TPM TSV | `etl/03_gtex.py` |
-| DoRothEA A-B | TF → target edges + confidence | CSV (R export) | `etl/04_dorothea.py` |
+| DoRothEA A-B | TF (protein) → target edges + confidence | `.rda` (pyreadr) | `etl/04_dorothea.py` |
 | PubMed (citation agent) | PMIDs for edge enrichment | API | `agents/citation_agent.py` |
 
-Load order: HGNC → GENCODE → GTEx → DoRothEA (dependencies in that order).
+Load order: HGNC → GENCODE → GTEx → **proteins (`05_proteins.py`)** → DoRothEA.
+Proteins must be minted before `04_dorothea.py`, whose `REGULATES` source is now a
+`:Protein` matched by TF symbol (ADR-0004).
 
 ---
 
@@ -73,9 +79,19 @@ Load order: HGNC → GENCODE → GTEx → DoRothEA (dependencies in that order).
 })
 ```
 
-### Edge: REGULATES (TF → Gene)
+### Node: Protein (TF slice only — ADR-0004)
 ```cypher
-(:Gene)-[:REGULATES {
+(:Protein {
+  uniprot_id: "P04637",           // canonical key
+  hgnc_symbol: "TP53",            // display + REGULATES match + citation search
+  entity_kind: "protein",
+  subtype: "transcription_factor" // only subtype in MVP
+})
+```
+
+### Edge: REGULATES (Protein[TF] → Gene)
+```cypher
+(:Protein)-[:REGULATES {          // was (:Gene)->(:Gene); now protein-sourced, downward
   mode: "activator" | "repressor" | "unknown",
   confidence: 0.92,               // DoRothEA score
   confidence_tier: "A",           // A or B
@@ -83,6 +99,12 @@ Load order: HGNC → GENCODE → GTEx → DoRothEA (dependencies in that order).
   source_version: "v1.0",
   pmids: ["12345678", "23456789"]
 }]->(:Gene)
+```
+
+### Edge: TRANSLATES_TO (Transcript → Protein) / ENCODES (Gene → Protein, fallback)
+```cypher
+(:Transcript)-[:TRANSLATES_TO { source_db: "GENCODE_SwissProt" }]->(:Protein)
+(:Gene)-[:ENCODES { source_db: "HGNC" }]->(:Protein)   // only when no transcript link
 ```
 
 ### Edge: PRODUCES (Gene → Transcript)
@@ -149,40 +171,50 @@ services:
 ## 3D Visualization
 
 ### Layer structure (graphite model)
+
+**Three** stacked layers now (ADR-0004). Bottom→top: genomics, transcriptomics,
+proteomics. Genes sit in genomics, transcripts in transcriptomics, **TF proteins
+in proteomics**. Exact Z coordinates, plane colors, node colors/shapes, and force
+spread are set by the **UI restyle (task #1)** and **layout (task #5)** decisions —
+not fixed here.
+
 ```
-Z = 1.0  ┌─────────────────────────────┐
-          │   TRANSCRIPTOMICS LAYER      │  ← Transcript nodes
-          │   (blue, semi-transparent)   │
-Z = 0.0  └─────────────────────────────┘
-          │   GENOMICS LAYER             │  ← Gene / TF nodes
-          │   (green, semi-transparent)  │
-          └─────────────────────────────┘
+[ PROTEOMICS    ]  ← Protein (TF) nodes      (NEW)
+[ TRANSCRIPTOMICS]  ← Transcript nodes
+[ GENOMICS      ]  ← Gene nodes
 ```
 
-Node color:
-- Gene (non-TF): `#4ade80` (green)
-- TF: `#f59e0b` (amber)
+Node color (⚠ palette superseded by UI restyle, task #1 — values below are the
+current/legacy scheme; TF is now a Protein subtype, not a gene):
+- Gene: `#4ade80` (green)
+- TF protein: `#f59e0b` (amber)
 - Transcript: `#60a5fa` (blue)
+- _(other protein subtypes: future)_
 
 Edge color:
 - REGULATES (activator): `#22c55e`
 - REGULATES (repressor): `#ef4444`
 - PRODUCES: `#a78bfa`
+- TRANSLATES_TO / ENCODES: _(to be set, task #1)_
 
 Layer planes rendered as transparent `PlaneGeometry` in Three.js.
 Node Z-position fixed by type, X/Y free-simulated (force layout within layer).
 
 ### Tissue filter
-Dropdown: All / Blood / Liver / Brain
-Filters edge opacity by `tissue_weights[selected]` threshold (>0.3 = visible).
+Toggle: All / Blood / Liver / Brain.
+**Continuous opacity, never removal** (ADR-0006): the active tissue scales
+PRODUCES-edge + transcript opacity by `tw_<tissue>` (weakly-expressed fade, never
+disappear). "All" = full opacity. Tissue is a visual channel only — it does not
+drop nodes/edges and does not feed traversal signal.
 
 ---
 
 ## Backend API
 
 ```
-GET  /api/gene/{hgnc_symbol}          → gene node + neighbors (1 hop)
-GET  /api/gene/{hgnc_symbol}/graph    → subgraph (2 hops, tissue filter)
+GET  /api/gene/{hgnc_symbol}          → gene node + immediate neighbors
+GET  /api/gene/{hgnc_symbol}/graph    → subgraph via signal-decay traversal
+        params: tissue, min_signal (ε), decay (d), max_nodes  (replaces max_hops — ADR-0005)
 GET  /api/transcript/{ensembl_tx_id}  → transcript node
 GET  /api/search?q={symbol}           → fuzzy HGNC symbol search
 POST /api/query                       → { "question": "..." } → Text2Cypher result
@@ -215,14 +247,17 @@ You are a Neo4j Cypher expert for a multi-omics knowledge graph.
 Schema:
 - (:Gene {ensembl_id, hgnc_symbol, biotype})
 - (:Transcript {ensembl_tx_id, hgnc_symbol, biotype})
-- (:Gene)-[:REGULATES {mode, confidence, tissue_weights, pmids}]->(:Gene)
-- (:Gene)-[:PRODUCES {tissue_weights, pmids}]->(:Transcript)
+- (:Protein {uniprot_id, hgnc_symbol, subtype})   // TFs; subtype='transcription_factor'
+- (:Protein)-[:REGULATES {mode, confidence, confidence_tier, pmids}]->(:Gene)
+- (:Gene)-[:PRODUCES {tw_<tissue>, pmids}]->(:Transcript)
+- (:Transcript)-[:TRANSLATES_TO]->(:Protein) / (:Gene)-[:ENCODES]->(:Protein)
 
 Rules:
+- A transcription factor is a (:Protein); REGULATES is Protein→Gene, never Gene→Gene
 - Always filter by confidence_tier IN ['A','B'] for REGULATES edges
-- Use hgnc_symbol for gene lookup
+- Use hgnc_symbol for protein/gene lookup
 - Return pmids on edges
-- For tissue queries, check tissue_weights[tissue] > 0.3
+- For tissue queries, check r.tw_<tissue> > 0.3 (flat props, not a map — ADR-0001)
 
 Question: {user_question}
 Return only the Cypher query, no explanation.
@@ -256,11 +291,14 @@ for edge in graph.get_edges_without_citations(limit=100):
 
 ### Run order
 ```bash
-python etl/01_hgnc.py          # ~2 min, loads gene ID mapping
+python etl/01_hgnc.py          # ~2 min, loads gene ID mapping (+ uniprot_ids)
 python etl/02_gencode.py       # ~10 min, loads gene + transcript nodes
 python etl/03_gtex.py          # ~15 min, loads tissue weights onto PRODUCES edges
-python etl/04_dorothea.py      # ~5 min, loads TF→gene REGULATES edges
+python etl/05_proteins.py      # mints TF Protein nodes + TRANSLATES_TO/ENCODES
+python etl/04_dorothea.py      # ~5 min, loads Protein(TF)→Gene REGULATES edges
 ```
+Note: `05_proteins.py` runs before `04_dorothea.py` — REGULATES now starts at a
+`:Protein` (ADR-0004). (Script number ≠ run order; kept for git history.)
 
 ### Idempotency
 All scripts use `MERGE` (not `CREATE`) in Cypher — safe to re-run on updates.
@@ -292,9 +330,9 @@ Each run logs to `DataSource` node with timestamp + record count.
 
 ## MVP success criteria
 
-- [ ] Graph loads: >40k gene nodes, >200k transcript nodes, >50k TF→gene edges
+- [ ] Graph loads: >40k gene nodes, >200k transcript nodes, ~6.4k Protein(TF)→Gene REGULATES edges (DoRothEA A-B; the old ">50k" gate is a spec error — ADR-0003), + a Protein node per DoRothEA TF
 - [ ] Query "TP53" → 3D graph renders in <3s
-- [ ] Tissue filter changes edge visibility correctly
+- [ ] Tissue filter changes edge/transcript **opacity** correctly (nothing disappears — ADR-0006)
 - [ ] Text2Cypher answers 5 benchmark questions correctly
 - [ ] Each edge shows at least 1 PMID (citation agent)
 - [ ] Demo walkthrough <10 min for new user
