@@ -216,7 +216,7 @@ export default function GraphViewer3D({
       // Moving flow particles only on the clicked (selected) edge.
       linkDirectionalParticles={(l: FGLink) => (l.id === selectedEdgeId ? 4 : 0)}
       linkDirectionalParticleWidth={2.2}
-      linkDirectionalParticleSpeed={0.01}
+      linkDirectionalParticleSpeed={0.0015}
       linkDirectionalParticleColor={(l: FGLink) => hexToRgba(edgeColor(l), 1)}
       onNodeClick={(n: FGNode) => onNodeClick(n)}
       onBackgroundClick={() => onBackgroundClick()}
