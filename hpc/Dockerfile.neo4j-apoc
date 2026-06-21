@@ -1,0 +1,30 @@
+# OmniGraph — Neo4j 5 + APOC image for HPC Singularity deployment.
+#
+# Bakes APOC in at build time so no outbound internet is needed at container
+# startup on the compute node. Build once, push to Docker Hub or St. Jude
+# Harbor, pull on HPC via singularity pull.
+#
+# Build & push:
+#   docker build -t <yourdockerhub>/omnigraph-neo4j:5 -f hpc/Dockerfile.neo4j-apoc .
+#   docker push <yourdockerhub>/omnigraph-neo4j:5
+#
+# Or push to St. Jude Harbor:
+#   docker tag <yourdockerhub>/omnigraph-neo4j:5 svlprhpcreg01.stjude.org/<project>/omnigraph-neo4j:5
+#   docker push svlprhpcreg01.stjude.org/<project>/omnigraph-neo4j:5
+
+FROM neo4j:5
+
+# APOC version must match the Neo4j minor version installed in the base image.
+# Check the current neo4j:5 version with: docker run --rm neo4j:5 neo4j --version
+# Then find the matching APOC release at: https://github.com/neo4j/apoc/releases
+ARG APOC_VERSION=5.26.1
+
+RUN apt-get update -q && apt-get install -y -q wget \
+ && rm -rf /var/lib/apt/lists/* \
+ && wget -q -O /var/lib/neo4j/plugins/apoc-${APOC_VERSION}-core.jar \
+    "https://github.com/neo4j/apoc/releases/download/${APOC_VERSION}/apoc-${APOC_VERSION}-core.jar"
+
+# Allow all APOC procedures. These env vars are translated to neo4j.conf at
+# startup by the Docker entrypoint (single _ -> dot, __ -> underscore).
+ENV NEO4J_dbms_security_procedures_unrestricted=apoc.*
+ENV NEO4J_dbms_security_procedures_allowlist=apoc.*
