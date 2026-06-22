@@ -55,7 +55,20 @@ run, so their graph gates stay UNRUN (the scripts abort cleanly via column guard
 - Phase 2 gate (cancer_gene>0): UNRUN — COSMIC data blocked.
 - Phase 3 gate (DE edges>1000): UNRUN — TCGA data blocked.
 - Phase 6 gate (metabolites>1000, CATALYSES>5000, LDHA→lactate): UNRUN — Recon3D blocked + Protein=117.
-- `= 900` audit: PASS backend (only via METABOLITE_LAYER_Z constant). Frontend pending Phase 8.
+- `= 900` audit: PASS backend (only via METABOLITE_LAYER_Z constant) + frontend
+  (only intended metabolomics y:600 / phenotype y:900; DISEASE_LAYER_Z now 1200).
+- Phase 8a/8b (commit 33d27ed): PASS tsc -b + vite build (both green; dist built).
+  Dev server loads with NO console errors; live graph confirms disease nodes
+  target Y=900 (Z-shift) and the 5-layer toggle renders (genomics/transcriptomics/
+  proteomics/metabolomics/phenotype). Checks 1,4 PASS; checks 2,3,6 (metabolite +
+  CATALYSES/DIFFERENTIALLY_EXPRESSED render) UNRUN — no Recon3D/TCGA data.
+  NOTE: production `tsc -b` was already RED on HEAD pre-Phase-8 (hgnc_symbol on
+  FGNode union, d3-force-3d types) — fixed those too to get a green build.
+- Phase 8c (UI polish): TODO — fonts(Inter/JetBrains Mono), glass-morphism panels,
+  bottom status bar, hover tooltip, collapsible legend (add Metabolite swatch —
+  the static legend currently omits it), ? shortcut overlay, skeleton loaders,
+  unified error banners, entity-browser pin/badge/pulse, searchbar chips/arrows/clear.
+  Dev server running on :3000 (serverId from preview_start) — reuse next turn.
 
 ## Notes / decisions
 - "agent writes carry source_agent/agent_version/run_timestamp" applies to
