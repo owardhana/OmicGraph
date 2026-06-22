@@ -40,7 +40,7 @@ run, so their graph gates stay UNRUN (the scripts abort cleanly via column guard
 | 5 | ADR-0009 | DONE |
 | 6 | Metabolomics ETL (14_metabolomics.py) + DAG + libsbml | CODE_COMPLETE — BLOCKED on Recon3D |
 | 7 | Backend metabolite models+Z shift+indexes+API | DONE (live-verified; data gate UNRUN) |
-| 8 | Frontend metabolomics layer + Z shift + UI polish | TODO (next iteration) |
+| 8 | Frontend metabolomics layer + Z shift + UI polish | 8a+8b DONE (typecheck+build pass); 8c (UI polish) TODO |
 | 9 | ENCODE cCREs | GATED (do not start) |
 | 10 | Tests | DONE for backend (layer-z PASS; data tests SKIP-when-absent) |
 

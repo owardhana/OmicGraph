@@ -6,20 +6,22 @@ export type LayerKey =
   | 'genomics'
   | 'transcriptomics'
   | 'proteomics'
+  | 'metabolomics'
   | 'phenotype';
 
-// Backend layer_z metadata parity (ADR-0007). The frontend positions layers on
-// the world Y axis (below), but exports this for cross-checks with the API.
-export const DISEASE_LAYER_Z = 900;
+// Backend layer_z metadata parity (ADR-0009 — shifted 900 -> 1200 when the
+// metabolomics layer was inserted). The frontend positions layers on the world Y
+// axis (below); this exports the backend metadata value for cross-checks.
+export const DISEASE_LAYER_Z = 1200;
 
-// Four stacked omics/phenotype layers, stacked along the VERTICAL axis (world Y)
+// Five stacked omics/phenotype layers, stacked along the VERTICAL axis (world Y)
 // so genomics reads at the bottom and the phenotype layer at the top. Y-centres
-// are evenly spaced so the force layout reads as distinct stacked planes. Only
-// the phenotype plane is tinted (pink) per the Phase 2 palette; the lower three
-// stay neutral so node colour carries the meaning.
-// `color` tints the (intentionally muted) layer plane; `accent` is the layer's
-// identity color — the dominant node hue — used for the toggle swatch so the four
-// layers read as distinct in the UI.
+// are evenly spaced (300 apart) so the force layout reads as distinct stacked
+// planes. The metabolomics plane is tinted orange and the phenotype plane pink
+// (ADR-0009 palette); the lower three stay neutral so node colour carries the
+// meaning. `color` tints the (intentionally muted) layer plane; `accent` is the
+// layer's identity color — the dominant node hue — used for the toggle swatch so
+// the five layers read as distinct in the UI.
 export const LAYERS: Record<
   LayerKey,
   { y: number; color: string; accent: string; label: string }
@@ -27,12 +29,14 @@ export const LAYERS: Record<
   genomics: { y: -300, color: '#6b7280', accent: '#4ade80', label: 'Genomics' },
   transcriptomics: { y: 0, color: '#6b7280', accent: '#60a5fa', label: 'Transcriptomics' },
   proteomics: { y: 300, color: '#6b7280', accent: '#c084fc', label: 'Proteomics' },
-  phenotype: { y: 600, color: '#f472b6', accent: '#f472b6', label: 'Phenotype' },
+  metabolomics: { y: 600, color: '#fb923c', accent: '#fb923c', label: 'Metabolomics' },
+  phenotype: { y: 900, color: '#f472b6', accent: '#f472b6', label: 'Phenotype' },
 };
 
 export const GENE_Y = LAYERS.genomics.y;
 export const TRANSCRIPT_Y = LAYERS.transcriptomics.y;
 export const PROTEIN_Y = LAYERS.proteomics.y;
+export const METABOLITE_Y = LAYERS.metabolomics.y;
 export const DISEASE_Y = LAYERS.phenotype.y;
 export const Y_JITTER = 42; // +/- deterministic per-node jitter so planes aren't flat
 
@@ -43,6 +47,7 @@ export const NODE_COLORS = {
   gene: '#4ade80', // green — gene
   transcript: '#60a5fa', // blue — transcript
   variant: '#2dd4bf', // teal — variant (in the genomics plane)
+  metabolite: '#fb923c', // orange — metabolite (metabolomics plane, ADR-0009)
   disease: '#f472b6', // hot pink — disease (phenotype plane)
 };
 
@@ -56,6 +61,8 @@ export const EDGE_COLORS = {
   associated_with: '#f472b6',
   in_gene: '#2dd4bf',
   implicated_in: '#fb923c',
+  catalyses: '#fb923c', // orange — enzymatic Protein->Metabolite (ADR-0009)
+  differentially_expressed: '#f59e0b', // amber — TCGA cancer DE (Gene->Disease)
   unknown: '#9ca3af',
 };
 
@@ -64,6 +71,7 @@ export const NODE_SIZES = {
   gene: 8,
   transcript: 5,
   variant: 7,
+  metabolite: 7, // small-molecule node (ADR-0009)
   disease: 9, // scaled x1.6 below so diseases read largest
 };
 
@@ -73,6 +81,7 @@ export const DISEASE_SIZE_SCALE = 1.6;
 export function nodeLayer(node: GraphNode): LayerKey {
   if (node.node_type === 'transcript') return 'transcriptomics';
   if (node.node_type === 'protein') return 'proteomics';
+  if (node.node_type === 'metabolite') return 'metabolomics';
   if (node.node_type === 'disease') return 'phenotype';
   // gene + variant both live in the genomics plane.
   return 'genomics';
@@ -86,6 +95,7 @@ export function nodeColor(node: FGNode): string {
       : NODE_COLORS.protein;
   }
   if (node.node_type === 'variant') return NODE_COLORS.variant;
+  if (node.node_type === 'metabolite') return NODE_COLORS.metabolite;
   if (node.node_type === 'disease') return NODE_COLORS.disease;
   return NODE_COLORS.gene;
 }
@@ -98,6 +108,7 @@ export function nodeSize(node: FGNode): number {
       : NODE_SIZES.protein;
   }
   if (node.node_type === 'variant') return NODE_SIZES.variant;
+  if (node.node_type === 'metabolite') return NODE_SIZES.metabolite;
   if (node.node_type === 'disease') return NODE_SIZES.disease * DISEASE_SIZE_SCALE;
   return NODE_SIZES.gene;
 }
@@ -127,6 +138,10 @@ export function edgeColor(link: FGLink): string {
       return EDGE_COLORS.in_gene;
     case 'IMPLICATED_IN':
       return EDGE_COLORS.implicated_in;
+    case 'CATALYSES':
+      return EDGE_COLORS.catalyses;
+    case 'DIFFERENTIALLY_EXPRESSED':
+      return EDGE_COLORS.differentially_expressed;
     case 'REGULATES':
       if (link.mode === 'activator') return EDGE_COLORS.activator;
       if (link.mode === 'repressor') return EDGE_COLORS.repressor;

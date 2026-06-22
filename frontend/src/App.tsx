@@ -36,6 +36,7 @@ export default function App() {
     genomics: true,
     transcriptomics: true,
     proteomics: true,
+    metabolomics: true,
     phenotype: true,
   });
   const [selectedNode, setSelectedNode] = useState<FGNode | null>(null);
@@ -69,8 +70,10 @@ export default function App() {
   };
 
   const handleExpand = (node: FGNode) => {
-    // Both genes and TF proteins carry a symbol that resolves to a gene graph.
-    if (node.hgnc_symbol) expandNode(node.hgnc_symbol);
+    // Both genes and TF proteins carry a symbol that resolves to a gene graph;
+    // variant/metabolite/disease nodes have no hgnc_symbol, so guard the access.
+    const sym = 'hgnc_symbol' in node ? node.hgnc_symbol : undefined;
+    if (sym) expandNode(sym);
   };
 
   // Entity-browser multi-load: merge each seed's subgraph additively; surface

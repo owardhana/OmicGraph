@@ -13,6 +13,7 @@ const TABS: { key: string; label: string }[] = [
   { key: 'gene', label: 'Gene' },
   { key: 'protein', label: 'Protein' },
   { key: 'variant', label: 'Variant' },
+  { key: 'metabolite', label: 'Metabolite' },
   { key: 'disease', label: 'Disease' },
 ];
 

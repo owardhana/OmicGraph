@@ -12,6 +12,7 @@ const TYPE_LABEL: Record<SearchResult['node_type'], string> = {
   transcript: 'Transcript',
   protein: 'Protein',
   variant: 'Variant',
+  metabolite: 'Metabolite',
   disease: 'Disease',
 };
 

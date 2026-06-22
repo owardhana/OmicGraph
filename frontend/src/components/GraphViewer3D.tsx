@@ -257,6 +257,8 @@ export default function GraphViewer3D({
           return `${n.hgnc_symbol ?? n.ensembl_tx_id} · Transcript`;
         if (n.node_type === 'variant')
           return `${n.rsid ?? n.id} · Variant${n.clinical_significance ? ' · ' + n.clinical_significance : ''}`;
+        if (n.node_type === 'metabolite')
+          return `${n.name ?? n.hmdb_id ?? n.id} · Metabolite${n.formula ? ' · ' + n.formula : ''}`;
         return `${n.name ?? n.ontology_id} · Disease`;
       }}
       nodeColor={(n: FGNode) => nodeColor(n)}
@@ -274,7 +276,15 @@ export default function GraphViewer3D({
       linkColor={(l: FGLink) => hexToRgba(edgeColor(l), linkAlpha(l, activeTissue))}
       linkOpacity={1}
       // INTERACTS_WITH (intra-layer PPI) renders thinner than inter-layer edges.
-      linkWidth={(l: FGLink) => (l.rel_type === 'INTERACTS_WITH' ? 0.8 * 0.6 : 0.8)}
+      // CATALYSES sits in the same weight tier; DIFFERENTIALLY_EXPRESSED reads
+      // thinnest (amber, cancer context — react-force-graph-3d has no linkDash,
+      // so colour+width carry the distinction per ADR-0009 / Phase-8 spec).
+      linkWidth={(l: FGLink) => {
+        if (l.rel_type === 'INTERACTS_WITH') return 0.8 * 0.6;
+        if (l.rel_type === 'CATALYSES') return 0.8 * 0.7;
+        if (l.rel_type === 'DIFFERENTIALLY_EXPRESSED') return 0.8 * 0.5;
+        return 0.8;
+      }}
       linkDirectionalArrowLength={2.8}
       linkDirectionalArrowRelPos={1}
       linkCurvature={0.12}
