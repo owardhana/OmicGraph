@@ -53,6 +53,16 @@ def main() -> None:
             "(COSMIC may require a manual login download — see 00_download.sh)."
         )
 
+    # The Sanger endpoint serves an HTML login page (not a CSV) to unauthenticated
+    # clients; detect that explicitly rather than emitting a confusing pandas error.
+    with open(COSMIC_FILE, "rb") as fh:
+        head = fh.read(64).lstrip().lower()
+    if head.startswith(b"<!doctype") or head.startswith(b"<html"):
+        print(f"ABORT: {COSMIC_FILE.name} is an HTML page (a COSMIC login page), "
+              "not CSV data. COSMIC requires a free account — download "
+              "cancer_gene_census.csv manually into data/raw/ (see 00_download.sh).")
+        sys.exit(1)
+
     header = pd.read_csv(COSMIC_FILE, nrows=0)
     missing = [c for c in REQUIRED_COLUMNS if c not in header.columns]
     if missing:

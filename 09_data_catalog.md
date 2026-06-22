@@ -320,19 +320,28 @@ a disease. Created entirely within `08_gwas.py` — no additional fields beyond
 |-------|--------|--------|-------|
 | `log2fc` | `13_tcga.py` | Derived: `log2((tumor_median+0.01)/(gtex_proxy+0.01))` | Proxy log2FC using TCGA FPKM tumor median vs GTEx tw_whole_blood as normal |
 | `direction` | `13_tcga.py` | n/a | `"up"` if log2fc > 0, `"down"` if < 0 |
-| `tumor_type` | `13_tcga.py` | TCGA phenotype TSV → cancer code | e.g. `"LUAD"`, `"BRCA"` |
+| `tumor_type` | `13_tcga.py` | TCGA phenotype `_primary_disease` → cancer code (crosswalk) | e.g. `"LUAD"`, `"BRCA"` |
+| `n_tumor` / `n_normal` | `13_tcga.py` | sample counts per cohort | provenance for the contrast |
 | `source_db` | `13_tcga.py` | n/a | `"TCGA_XENA"` |
-| `source_version` | `13_tcga.py` | n/a | `"pancan_2023"` |
+| `source_version` | `13_tcga.py` | n/a | `"toil_rsem_fpkm"` |
 
 **Conductance** = `min(1.0, abs(log2fc) / 4.0)`.
 Threshold: `abs(log2fc) >= TCGA_MIN_LOG2FC` (default 1.0).
 
-**Important caveat:** FPKM is not count data; this is a simplified proxy for
-differential expression. For publication-grade analysis use DESeq2/edgeR with raw
-counts. The proxy is sufficient for directional signal traversal in the graph.
+**Method (matched-normal):** the Toil matrix (`data/raw/tcga_RSEM_gene_fpkm.gz`) is
+already `log2(fpkm+0.001)`, so `log2fc = median_tumour − median_normal` per cohort,
+where tumour = TCGA sample_type_id 01-09 and normal = 10-19 (from
+`data/raw/TCGA_phenotype_denseDataOnlyDownload.tsv.gz`). Cohorts with fewer than
+`TCGA_MIN_NORMALS` adjacent normals are skipped (no fabricated baseline). This
+replaced an earlier GTEx-whole-blood "proxy normal" (dimensionally invalid).
+**Caveat:** median cohort DE is still simplified (subtype-specific changes wash out;
+publication-grade work needs DESeq2/edgeR on counts) — sufficient for directional
+signal traversal.
 
-TCGA code → EFO mapping loaded from `data/raw/tcga_efo_mapping.tsv`
-(opentargets/cttv_mappings). Only tumor types with a known EFO ID produce edges.
+Cohort name → disease ontology id comes from the curated, graph-verified crosswalk
+`etl/reference/tcga_disease_to_efo.tsv` (28/33 cohorts resolve to a present Disease
+node). The raw Open Targets `cancer2EFO_mappings.tsv` is its documented upstream but
+is NOT read directly — its EFO ids covered only 4/33 of this graph's Disease set.
 
 ---
 

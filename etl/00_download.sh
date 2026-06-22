@@ -47,17 +47,27 @@ SOURCES=(
   "gnomad_v4_constraint.tsv|https://storage.googleapis.com/gcp-public-data--gnomad/release/4.1/constraint/gnomad.v4.1.constraint_metrics.tsv"
   "efo.json|https://github.com/EBISPOT/efo/releases/latest/download/efo.json"
   # --- Phase 3 sources (08_phase3_build_prompt.md). Same curl + skip-if-present pattern. ---
-  # TCGA Pan-Cancer gene expression + phenotype (UCSC Xena public hub, no auth).
-  "tcga_pancan_expression.tsv.gz|https://tcga-xena-hub.s3.us-east-1.amazonaws.com/download/TCGA-PANCAN.htseq_fpkm.tsv.gz"
-  "tcga_pancan_phenotype.tsv.gz|https://tcga-xena-hub.s3.us-east-1.amazonaws.com/download/TCGA-PANCAN.GDC_phenotype.tsv.gz"
-  # COSMIC Cancer Gene Census (v99, public tier). NOTE: Sanger gates this behind a
-  # login in practice; if the download 403s, fetch the CSV manually into data/raw/.
+  # TCGA Pan-Cancer gene expression + phenotype (UCSC Xena / Toil public hubs, no auth).
+  # CONSUMED by 13_tcga.py. The matrix is Toil RSEM FPKM, values already log2(fpkm+0.001);
+  # the phenotype's `_primary_disease` joins to the curated crosswalk (see below).
+  "tcga_RSEM_gene_fpkm.gz|https://toil-xena-hub.s3.us-east-1.amazonaws.com/download/tcga_RSEM_gene_fpkm.gz"
+  "TCGA_phenotype_denseDataOnlyDownload.tsv.gz|https://tcga-pancan-atlas-hub.s3.us-east-1.amazonaws.com/download/TCGA_phenotype_denseDataOnlyDownload.tsv.gz"
+  # COSMIC Cancer Gene Census (v99). NOT CONSUMABLE as-is: the Sanger endpoint returns
+  # an HTML *login page*, not a CSV (12_cosmic.py aborts cleanly via its column guard).
+  # COSMIC requires a free account; fetch cancer_gene_census.csv manually into data/raw/
+  # (overwriting the login-page file) to enable Phase 2.
   "cosmic_cancer_gene_census.csv|https://cancer.sanger.ac.uk/cosmic/file_download/GRCh38/cosmic/v99/cancer_gene_census.csv"
-  # TCGA cancer type -> EFO mapping (Open Targets / cttv_mappings).
-  "tcga_efo_mapping.tsv|https://raw.githubusercontent.com/opentargets/cttv_mappings/master/tcga_efo_mapping.tsv"
-  # Recon3D SBML (human metabolic reconstruction, ~60MB).
-  "Recon3D.xml|https://www.vmh.life/files/reconstructions/Recon/3D.04/Recon3D_301.xml"
-  # HMDB metabolite identifiers (zip; ~1.5GB unzipped, streamed in 14_metabolomics.py).
+  # TCGA cancer type -> EFO mapping (Open Targets archive). Kept as the documented
+  # upstream provenance of etl/reference/tcga_disease_to_efo.tsv; 13_tcga.py reads the
+  # curated graph-verified crosswalk, not this file directly (see crosswalk header).
+  "cancer2EFO_mappings.tsv|https://raw.githubusercontent.com/opentargets-archive/evidence_datasource_parsers/master/resources/cancer2EFO_mappings.tsv"
+  # Recon3D. NOTE: the vmh.life 3D.01 zip ships MATLAB .mat files, NOT SBML XML, so
+  # 14_metabolomics.py (libsbml) cannot read it. Metabolomics (Phase 6) is also gated
+  # on the full proteome (Protein=117 -> ~0 CATALYSES) regardless, so this is HELD.
+  # For SBML later, fetch Recon3D as SBML (e.g. BiGG) and save as data/raw/Recon3D.xml.
+  "Recon3D_301.zip|https://www.vmh.life/files/reconstructions/Recon/3D.01/Recon3D_301.zip"
+  # HMDB metabolite identifiers (zip; ~6.4GB unzipped). Optional — Recon3D SBML carries
+  # hmdb/chebi ids directly; only needed if cross-referencing names. Phase 6 held (above).
   "hmdb_metabolites.zip|https://hmdb.ca/system/downloads/current/hmdb_metabolites.zip"
 )
 
