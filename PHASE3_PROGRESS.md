@@ -40,7 +40,7 @@ run, so their graph gates stay UNRUN (the scripts abort cleanly via column guard
 | 5 | ADR-0009 | DONE |
 | 6 | Metabolomics ETL (14_metabolomics.py) + DAG + libsbml | CODE_COMPLETE — BLOCKED on Recon3D |
 | 7 | Backend metabolite models+Z shift+indexes+API | DONE (live-verified; data gate UNRUN) |
-| 8 | Frontend metabolomics layer + Z shift + UI polish | 8a+8b DONE (typecheck+build pass); 8c (UI polish) TODO |
+| 8 | Frontend metabolomics layer + Z shift + UI polish | DONE — 8a/8b (33d27ed) + 8c (41fd9de); live-verified |
 | 9 | ENCODE cCREs | GATED (do not start) |
 | 10 | Tests | DONE for backend (layer-z PASS; data tests SKIP-when-absent) |
 
@@ -64,11 +64,20 @@ run, so their graph gates stay UNRUN (the scripts abort cleanly via column guard
   CATALYSES/DIFFERENTIALLY_EXPRESSED render) UNRUN — no Recon3D/TCGA data.
   NOTE: production `tsc -b` was already RED on HEAD pre-Phase-8 (hgnc_symbol on
   FGNode union, d3-force-3d types) — fixed those too to get a green build.
-- Phase 8c (UI polish): TODO — fonts(Inter/JetBrains Mono), glass-morphism panels,
-  bottom status bar, hover tooltip, collapsible legend (add Metabolite swatch —
-  the static legend currently omits it), ? shortcut overlay, skeleton loaders,
-  unified error banners, entity-browser pin/badge/pulse, searchbar chips/arrows/clear.
-  Dev server running on :3000 (serverId from preview_start) — reuse next turn.
+- Phase 8c (commit 41fd9de): DONE + live-verified. Checks 7 (glass — all 4 panels
+  blur(12px)+rgba(250,249,245,0.82)), 8 (status bar 150 nodes·289 edges·TP53·ORBIT),
+  9 (dynamic legend), 10 (? overlay) PASS. Check 11 (hover tooltip) wired+typechecks
+  but real canvas hover needs the raycaster (not headless-verifiable). 2/3/6 UNRUN
+  (metabolite/edge render — no data). Glass adapted to the LIGHT theme (dark glass
+  would force a full palette inversion) — say the word for a full dark theme.
+
+## BUILD STATUS: COMPLETE except externally-blocked work
+- Phases 4/5/7/8/10(backend) DONE + verified (commits 9dd722b, 33d27ed, 41fd9de).
+- Phases 1/2/3/6 code-complete, BLOCKED on data (see DATA BLOCKER above).
+- Phase 9 (ENCODE) HARD-GATED — needs user-driven AuraDB migration; do not start.
+- LOOP STOPPED here (nothing left to build autonomously). To resume: provide data
+  for phases 2/3/6, then `etl/run_pipeline.py --from 12_cosmic` + run the skipped
+  pytest gates; OR trigger Phase 9 after AuraDB migration.
 
 ## Notes / decisions
 - "agent writes carry source_agent/agent_version/run_timestamp" applies to
