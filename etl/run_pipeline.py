@@ -32,6 +32,8 @@ ORDER = [
     "01_hgnc", "02_gencode", "03_gtex", "05_proteins", "04_dorothea",
     "06_uniprot_enrich", "07_string", "08_gwas", "09_clinvar",
     "10_ncbi_summaries", "11_gnomad",
+    # --- Phase 3 (08_phase3_build_prompt.md) ---
+    "12_cosmic", "13_tcga", "14_metabolomics",
 ]
 
 # A step is aborted if a prerequisite that runs EARLIER in ORDER failed in this
@@ -44,6 +46,11 @@ BLOCKING: dict[str, set[str]] = {
     "09_clinvar": {"08_gwas"},
     "10_ncbi_summaries": {"01_hgnc"},
     "11_gnomad": {"01_hgnc"},
+    # Phase 3: COSMIC enriches existing genes; TCGA needs Gene + Disease nodes;
+    # metabolomics needs Protein + Gene nodes for the CATALYSES mapping.
+    "12_cosmic": {"01_hgnc"},
+    "13_tcga": {"01_hgnc", "08_gwas"},
+    "14_metabolomics": {"01_hgnc", "05_proteins"},
 }
 
 

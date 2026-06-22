@@ -387,37 +387,91 @@ via entity browser multi-select. "Load selected (N)" adds to empty canvas.
 
 ---
 
-## Phase 3 backlog — deferred decisions
+## Phase 3 scope — in progress (branch: `phase-3-tcga-metabolomics-encode`)
 
-Items below were explicitly deferred from Phase 2. They are pre-grilled (no new
-design session required) but not yet implemented.
+See [08_phase3_build_prompt.md](08_phase3_build_prompt.md) for the full 11-phase
+implementation plan. Summary below.
 
-### Data sources (high priority)
+### Phase 3 deliverables
 
-| Item | Why deferred | Pre-decided approach |
-|------|-------------|---------------------|
-| **TCGA cancer differential expression** | Needed full proteome + Disease nodes first (now done) | TCGA-PANCAN cohort; `CO_EXPRESSED_WITH` and tumor-vs-normal `EXPRESSED_IN` edges; `cancer_gene` flag (COSMIC/OncoKB) on Gene already modelled |
-| **GTEx tissue panel expansion** | Low urgency vs disease data | Add kidney, heart, lung, pancreas, adipose to `PRODUCES` tissue weight props; same pattern as existing 3 tissues |
-| **ENCODE regulatory elements (cCREs)** | Infrastructure decision — 1.7M nodes requires AuraDB | Only after migration to AuraDB Professional; adds `(:cCRE)` node type in genomics plane |
+| Item | Status | New node/edge types | Data source |
+|------|--------|---------------------|-------------|
+| HPC Singularity setup | 🔲 Phase 1 | — | St. Jude Harbor Registry |
+| COSMIC cancer gene flags | 🔲 Phase 3 | — (enriches Gene.cancer_gene) | COSMIC CGC v99 |
+| TCGA differential expression | 🔲 Phase 4 | `DIFFERENTIALLY_EXPRESSED` (Gene→Disease) | UCSC Xena PANCAN |
+| Metabolomics Layer 4 | 🔲 Phases 7–9 | `Metabolite`, `CATALYSES` (Protein→Metabolite) | Recon3D SBML + HMDB |
+| Frontend UI polish | 🔲 Phase 9 | — | — |
+| ENCODE cCREs (gated) | 🔲 Phase 10 | `cCRE`, `BINDS`, `REGULATES_VIA` | ENCODE V4 |
 
-### Agents (Phase 3)
+### New node schemas
 
-| Agent | Trigger | Notes |
-|-------|---------|-------|
-| **Literature extraction agent** | New bioRxiv/PubMed papers | Proposes new edges from text; validation queue before write; see `Extraction agent (v3+)` in AGENTS.md |
+**Metabolite (Layer 4 — orange, #fb923c):**
+```
+hmdb_id          string   canonical key (e.g. "HMDB0000122"); fallback: chebi_id
+chebi_id         string   optional crosslink
+name             string   display name
+formula          string   molecular formula (e.g. "C6H12O6")
+charge           int      formal charge
+source_db        string   "Recon3D"
+source_version   string   "3.04"
+layer_z          int      900 (Layer 4 — between proteomics=600 and disease=1200)
+```
 
-### Infrastructure triggers
+**cCRE (genomics layer — charcoal, #475569):**
+```
+encode_id        string   canonical key (e.g. "EH38E1234567")
+chromosome       string
+start_grch38     int
+end_grch38       int
+ccre_type        string   "PLS" | "pELS" | "dELS" | "CTCF-only" | "DNase-H3K4me3"
+layer_z          int      0 (genomics layer, same as Gene/Variant)
+```
+
+### New edge types
+
+| Edge | Label | Source | Conductance |
+|------|-------|--------|-------------|
+| Gene → Disease | `DIFFERENTIALLY_EXPRESSED` | TCGA via UCSC Xena | min(1.0, abs(log2fc)/4.0) |
+| Protein → Metabolite | `CATALYSES` | Recon3D | 0.7 |
+| TF Protein → cCRE | `BINDS` | ENCODE ChIP-seq | chip_score (0–1) |
+| cCRE → Gene | `REGULATES_VIA` | ENCODE + coordinate proximity | ~1.0 |
+
+### Layer Z coordinate shift (Phase 3)
+
+Metabolomics inserts as Layer 4; Disease moves to Layer 5.
+
+| Layer | Phase 2 layer_z | Phase 3 layer_z |
+|-------|----------------|----------------|
+| Genomics | 0 | 0 (unchanged) |
+| Transcriptomics | 300 | 300 (unchanged) |
+| Proteomics | 600 | 600 (unchanged) |
+| **Metabolomics** | — | **900 (new)** |
+| **Phenotype/Disease** | **900** | **1200 (shifted)** |
+
+Frontend Y coordinates (layers.ts): genomics=-300, transcriptomics=0, proteomics=300,
+metabolomics=600 (new), phenotype=900 (shifted from 600).
+
+### Tunable parameters (Phase 3 additions)
+
+| Env var | Default | Controls |
+|---------|---------|---------|
+| `TCGA_MIN_LOG2FC` | `1.0` | Minimum absolute log2FC for DIFFERENTIALLY_EXPRESSED edges |
+| `TCGA_MAX_ADJ_PVALUE` | `0.05` | Adjusted p-value cutoff for TCGA edges |
+| `METABOLOMICS_MIN_REACTIONS` | `1` | Min reactions a metabolite must appear in to be loaded |
+| `ENCODE_BATCH_SIZE` | `5000` | cCRE nodes per Cypher UNWIND batch (AuraDB transaction limit) |
+
+### Infrastructure decisions
 
 | Trigger | Action |
 |---------|--------|
-| ENCODE cCREs added | Migrate to AuraDB Professional (~$65/month) |
-| >500k embedded nodes OR >500ms ANN latency | Revisit Neo4j vector index vs external store (ADR-0008) |
+| Node count > 500k OR pagecache miss rate > 30% | Migrate to AuraDB Professional (~$65/month) |
+| ENCODE Phase 10 start | AuraDB migration must be complete first — hard gate |
+| >500ms ANN vector search latency | Revisit Neo4j native vector index (ADR-0008) |
 | ≥3 agents need independent schedules | Add Prefect/Dagster orchestrator |
 
-### Biological questions not yet answerable
+### Deferred from Phase 3
 
-- Tumor vs normal expression differences (requires TCGA)
-- Cell-type resolution (requires CellxGene / single-cell integration)
-- Metabolite layer (KEGG/Recon3D) — layer 5 in the future stack
-- Co-expression networks (`CO_EXPRESSED_WITH` — GTEx/TCGA)
-- Regulatory element → Gene links (`BINDS` — ENCODE ChIP-seq)
+- **GTEx tissue panel expansion** — hold off (low urgency vs disease/cancer data)
+- **Cell-type resolution** — indefinitely deferred: data too noisy/unstandardized; tissue level better
+- **Literature extraction agent** — separate design session required (NLP pipeline, validation queue)
+- **Co-expression networks** (`CO_EXPRESSED_WITH`) — requires TCGA + GTEx count data in same pipeline

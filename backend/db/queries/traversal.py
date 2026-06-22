@@ -25,6 +25,9 @@ from backend.db.neo4j_client import get_session
 _TRAVERSAL_REL_TYPES = [
     "REGULATES", "PRODUCES", "TRANSLATES_TO", "ENCODES",
     "INTERACTS_WITH", "ASSOCIATED_WITH", "IN_GENE", "IMPLICATED_IN",
+    # Phase 3 (08_phase3_build_prompt.md): TCGA differential expression edge
+    # (Gene -> Disease) and the Recon3D enzymatic edge (Protein -> Metabolite).
+    "DIFFERENTIALLY_EXPRESSED", "CATALYSES",
 ]
 
 # Depth guard: signal decays by at most `decay` per hop, so it crosses any
@@ -51,6 +54,12 @@ def _conductance(rel_type: str, rel_props: dict) -> float:
         return 0.4
     if rel_type == "IMPLICATED_IN":
         return 0.5  # gene-disease rollup, lower weight
+    if rel_type == "DIFFERENTIALLY_EXPRESSED":
+        # Stronger fold-change = higher conductance (|log2fc|=4 saturates to 1.0).
+        lfc = rel_props.get("log2fc")
+        return min(1.0, abs(float(lfc)) / 4.0) if lfc is not None else 0.25
+    if rel_type == "CATALYSES":
+        return 0.7  # enzymatic link — moderately confident structural (ADR-0009)
     return settings.STRUCTURAL_CONDUCTANCE
 
 
@@ -61,7 +70,13 @@ def _conductance(rel_type: str, rel_props: dict) -> float:
 # reach MULTIPLE hops (e.g. gene -> protein -> INTERACTS_WITH) within max_nodes
 # instead of one edge type flooding ring 1. Structural (PRODUCES/TRANSLATES_TO/
 # ENCODES) and REGULATES edges stay uncapped — they are the molecular backbone.
-_DENSE_CAPPED = {"INTERACTS_WITH", "ASSOCIATED_WITH", "IN_GENE", "IMPLICATED_IN"}
+# DIFFERENTIALLY_EXPRESSED is dense (a common cancer Disease has thousands of
+# up/down genes) so it is capped, top-k by |log2fc|. CATALYSES is NOT capped —
+# most proteins catalyse only 1-5 reactions (ADR-0009), no hub explosion.
+_DENSE_CAPPED = {
+    "INTERACTS_WITH", "ASSOCIATED_WITH", "IN_GENE", "IMPLICATED_IN",
+    "DIFFERENTIALLY_EXPRESSED",
+}
 
 
 def _edge_rank(rel_type: str, rel_props: dict) -> float:
@@ -72,6 +87,9 @@ def _edge_rank(rel_type: str, rel_props: dict) -> float:
     if rel_type == "ASSOCIATED_WITH":
         p = props.get("p_value")
         return -math.log10(p) if (p and p > 0) else 0.0  # strongest GWAS first
+    if rel_type == "DIFFERENTIALLY_EXPRESSED":
+        lfc = props.get("log2fc")
+        return abs(float(lfc)) if lfc is not None else 0.0  # strongest fold-change first
     return 0.0  # IN_GENE / IMPLICATED_IN: structural rollup, no score -> first-k
 
 
@@ -106,11 +124,13 @@ CALL {
   UNION WITH key MATCH (n:Protein {uniprot_id: key}) RETURN n
   UNION WITH key MATCH (n:Variant {rsid: key}) RETURN n
   UNION WITH key MATCH (n:Disease {ontology_id: key}) RETURN n
+  UNION WITH key MATCH (n:Metabolite {hmdb_id: key}) RETURN n
+  UNION WITH key MATCH (n:Metabolite {chebi_id: key}) RETURN n
 }
 RETURN elementId(n) AS eid,
        labels(n)[0] AS label,
        properties(n) AS props,
-       coalesce(n.ensembl_id, n.ensembl_tx_id, n.uniprot_id, n.rsid, n.ontology_id) AS node_key
+       coalesce(n.ensembl_id, n.ensembl_tx_id, n.uniprot_id, n.rsid, n.ontology_id, n.hmdb_id, n.chebi_id) AS node_key
 """
 
 # Expand one whole frontier ring in a single query.
@@ -123,15 +143,15 @@ RETURN eid AS from_eid,
        elementId(nb) AS nb_eid,
        labels(nb)[0] AS nb_label,
        properties(nb) AS nb_props,
-       coalesce(nb.ensembl_id, nb.ensembl_tx_id, nb.uniprot_id, nb.rsid, nb.ontology_id) AS nb_key,
+       coalesce(nb.ensembl_id, nb.ensembl_tx_id, nb.uniprot_id, nb.rsid, nb.ontology_id, nb.hmdb_id, nb.chebi_id) AS nb_key,
        type(r) AS rel_type,
        elementId(r) AS rel_eid,
        r.confidence AS confidence,
        properties(r) AS rel_props,
        elementId(startNode(r)) AS start_eid,
        elementId(endNode(r)) AS end_eid,
-       coalesce(startNode(r).ensembl_id, startNode(r).ensembl_tx_id, startNode(r).uniprot_id, startNode(r).rsid, startNode(r).ontology_id) AS source_key,
-       coalesce(endNode(r).ensembl_id, endNode(r).ensembl_tx_id, endNode(r).uniprot_id, endNode(r).rsid, endNode(r).ontology_id) AS target_key
+       coalesce(startNode(r).ensembl_id, startNode(r).ensembl_tx_id, startNode(r).uniprot_id, startNode(r).rsid, startNode(r).ontology_id, startNode(r).hmdb_id, startNode(r).chebi_id) AS source_key,
+       coalesce(endNode(r).ensembl_id, endNode(r).ensembl_tx_id, endNode(r).uniprot_id, endNode(r).rsid, endNode(r).ontology_id, endNode(r).hmdb_id, endNode(r).chebi_id) AS target_key
 """
 
 # is_tf for a gene now means "encodes a TF protein", reachable via the
@@ -149,7 +169,7 @@ RETURN eid AS ensembl_id,
 def _node_kind(label: str) -> str:
     return {
         "Gene": "gene", "Transcript": "transcript", "Protein": "protein",
-        "Variant": "variant", "Disease": "disease",
+        "Variant": "variant", "Disease": "disease", "Metabolite": "metabolite",
     }.get(label, label.lower())
 
 

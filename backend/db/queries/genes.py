@@ -74,6 +74,52 @@ async def get_gene_neighborhood(
     )
 
 
+# For each tumor type the seed gene is differentially expressed in, report the
+# broader DE landscape of that (tumor_type, disease): how many genes are up vs
+# down and the top-5 by |log2fc| in each direction. Phase 3 (08_phase3...).
+_GENE_CANCER = """
+MATCH (g:Gene {hgnc_symbol: $symbol})-[seed:DIFFERENTIALLY_EXPRESSED]->(d:Disease)
+WITH DISTINCT d, seed.tumor_type AS tumor_type
+CALL {
+  WITH d, tumor_type
+  MATCH (:Gene)-[r:DIFFERENTIALLY_EXPRESSED {tumor_type: tumor_type}]->(d)
+  RETURN sum(CASE WHEN r.direction = 'up' THEN 1 ELSE 0 END) AS up_count,
+         sum(CASE WHEN r.direction = 'down' THEN 1 ELSE 0 END) AS down_count
+}
+CALL {
+  WITH d, tumor_type
+  MATCH (og:Gene)-[r:DIFFERENTIALLY_EXPRESSED {tumor_type: tumor_type}]->(d)
+  WHERE r.direction = 'up'
+  WITH og, r ORDER BY r.log2fc DESC LIMIT 5
+  RETURN collect(og.hgnc_symbol) AS top_up_genes
+}
+CALL {
+  WITH d, tumor_type
+  MATCH (og:Gene)-[r:DIFFERENTIALLY_EXPRESSED {tumor_type: tumor_type}]->(d)
+  WHERE r.direction = 'down'
+  WITH og, r ORDER BY r.log2fc ASC LIMIT 5
+  RETURN collect(og.hgnc_symbol) AS top_down_genes
+}
+RETURN tumor_type,
+       d.ontology_id AS efo_id,
+       d.name AS disease_name,
+       up_count, down_count, top_up_genes, top_down_genes
+ORDER BY (up_count + down_count) DESC
+"""
+
+
+async def get_gene_cancer_associations(symbol: str) -> list[dict]:
+    """Per-tumor-type differential-expression summary for a gene (Phase 3).
+
+    Returns one row per tumor type the gene is DIFFERENTIALLY_EXPRESSED in, each
+    with the tumor type's overall up/down gene counts and top-5 genes by log2fc.
+    Empty list when the gene has no DIFFERENTIALLY_EXPRESSED edges (e.g. before
+    13_tcga has run)."""
+    async with get_session() as session:
+        rows = await (await session.run(_GENE_CANCER, symbol=symbol)).data()
+    return rows
+
+
 # Backwards-compatible alias: callers that asked for a 2-hop subgraph now get the
 # same signal-decay expansion (depth is governed by decay/min_signal, not hops).
 async def get_gene_subgraph(

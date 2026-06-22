@@ -15,6 +15,12 @@
 #   ClinVar       variant clinical significance enrichment
 #   gnomAD v4     gene loss-of-function constraint (pLI)
 #   EFO           disease/phenotype ontology
+#   --- Phase 3 (08_phase3_build_prompt.md / 09_data_catalog.md) ---
+#   TCGA Xena     pan-cancer FPKM expression + phenotype (DIFFERENTIALLY_EXPRESSED)
+#   COSMIC CGC    Cancer Gene Census v99 (cancer_gene / cosmic_tier flags)
+#   cttv mappings TCGA cancer code -> EFO ontology id
+#   Recon3D       human metabolic reconstruction SBML (Metabolite + CATALYSES)
+#   HMDB          metabolite identifiers (hmdb_id / chebi_id / name lookup)
 
 set -euo pipefail
 
@@ -40,6 +46,19 @@ SOURCES=(
   "ClinVarVariantSummary.txt.gz|https://ftp.ncbi.nlm.nih.gov/pub/clinvar/tab_delimited/variant_summary.txt.gz"
   "gnomad_v4_constraint.tsv|https://storage.googleapis.com/gcp-public-data--gnomad/release/4.1/constraint/gnomad.v4.1.constraint_metrics.tsv"
   "efo.json|https://github.com/EBISPOT/efo/releases/latest/download/efo.json"
+  # --- Phase 3 sources (08_phase3_build_prompt.md). Same curl + skip-if-present pattern. ---
+  # TCGA Pan-Cancer gene expression + phenotype (UCSC Xena public hub, no auth).
+  "tcga_pancan_expression.tsv.gz|https://tcga-xena-hub.s3.us-east-1.amazonaws.com/download/TCGA-PANCAN.htseq_fpkm.tsv.gz"
+  "tcga_pancan_phenotype.tsv.gz|https://tcga-xena-hub.s3.us-east-1.amazonaws.com/download/TCGA-PANCAN.GDC_phenotype.tsv.gz"
+  # COSMIC Cancer Gene Census (v99, public tier). NOTE: Sanger gates this behind a
+  # login in practice; if the download 403s, fetch the CSV manually into data/raw/.
+  "cosmic_cancer_gene_census.csv|https://cancer.sanger.ac.uk/cosmic/file_download/GRCh38/cosmic/v99/cancer_gene_census.csv"
+  # TCGA cancer type -> EFO mapping (Open Targets / cttv_mappings).
+  "tcga_efo_mapping.tsv|https://raw.githubusercontent.com/opentargets/cttv_mappings/master/tcga_efo_mapping.tsv"
+  # Recon3D SBML (human metabolic reconstruction, ~60MB).
+  "Recon3D.xml|https://www.vmh.life/files/reconstructions/Recon/3D.04/Recon3D_301.xml"
+  # HMDB metabolite identifiers (zip; ~1.5GB unzipped, streamed in 14_metabolomics.py).
+  "hmdb_metabolites.zip|https://hmdb.ca/system/downloads/current/hmdb_metabolites.zip"
 )
 
 download_one() {
