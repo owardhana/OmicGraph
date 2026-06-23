@@ -1,6 +1,6 @@
 """ETL 12 — COSMIC Cancer Gene Census: flag cancer genes on existing Gene nodes.
 
-Bulk-file enrichment (06_data_vision.md Pattern 1 / 09_data_catalog.md row 11).
+Bulk-file enrichment (docs/data-architecture.md Pattern 1 / docs/data-architecture.md row 11).
 Reads the COSMIC Cancer Gene Census CSV and SETs ``cancer_gene = true`` plus the
 ``cosmic_tier`` ("1" or "2") on Gene nodes matched by HGNC symbol. This populates
 the ``cancer_gene`` bool that has always been on the Gene model but was never

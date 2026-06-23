@@ -25,6 +25,7 @@ export default function App() {
     error,
     loadGene,
     loadDisease,
+    loadMetabolite,
     expandNode,
     mergeInto,
     clearGraph,
@@ -88,6 +89,9 @@ export default function App() {
     if (r.node_type === 'disease') {
       setCurrentEntity(r.name ?? r.id);
       loadDisease(r.id); // /api/disease/{ontology_id}/graph
+    } else if (r.node_type === 'metabolite') {
+      setCurrentEntity(r.name ?? r.id);
+      loadMetabolite(r.id); // /api/metabolite/{hmdb_id|chebi_id}/graph
     } else {
       // gene / protein / transcript all resolve via the gene graph by symbol.
       const symbol = r.hgnc_symbol ?? r.id;

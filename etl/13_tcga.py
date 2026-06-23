@@ -1,6 +1,6 @@
 """ETL 13 — TCGA differential expression: DIFFERENTIALLY_EXPRESSED edges.
 
-Topology from bulk files (06_data_vision.md Pattern 1 / 09_data_catalog.md row
+Topology from bulk files (docs/data-architecture.md Pattern 1 / docs/data-architecture.md row
 12). Computes a per-gene, per-tumor-type differential-expression signal from the
 UCSC Xena / Toil TCGA Pan-Cancer RSEM FPKM matrix and MERGEs:
 
@@ -19,7 +19,7 @@ This replaces the earlier GTEx-whole-blood "proxy normal", which was dimensional
 inconsistent (a blood tissue-weight is not an expression baseline for solid
 tumours). Cohorts without >= TCGA_MIN_NORMALS adjacent normals are SKIPPED — we do
 not invent a baseline. This is still a simplified signal (KNOWN RISKS,
-08_phase3_build_prompt.md: real DE needs DESeq2/edgeR on counts), but it is a
+docs/data-architecture.md: real DE needs DESeq2/edgeR on counts), but it is a
 genuine tumour-vs-normal contrast. The signed log2fc semantics are unchanged, so
 no backend/conductance change is required.
 

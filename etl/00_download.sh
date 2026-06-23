@@ -9,13 +9,13 @@
 #   GENCODE v46   SwissProt metadata: transcript (ENST) -> UniProt (ADR-0004)
 #   GTEx v10      tissue median TPM (GCT)
 #   DoRothEA      TF -> target regulons with confidence tiers
-#   --- Phase 2 (06_data_vision.md) ---
+#   --- Phase 2 (docs/data-architecture.md) ---
 #   STRING v12    protein-protein interactions (INTERACTS_WITH edges)
 #   GWAS Catalog  variant-trait associations (Variant + Disease nodes)
 #   ClinVar       variant clinical significance enrichment
 #   gnomAD v4     gene loss-of-function constraint (pLI)
 #   EFO           disease/phenotype ontology
-#   --- Phase 3 (08_phase3_build_prompt.md / 09_data_catalog.md) ---
+#   --- Phase 3 (docs/data-architecture.md) ---
 #   TCGA Xena     pan-cancer FPKM expression + phenotype (DIFFERENTIALLY_EXPRESSED)
 #   COSMIC CGC    Cancer Gene Census v99 (cancer_gene / cosmic_tier flags)
 #   cttv mappings TCGA cancer code -> EFO ontology id
@@ -40,13 +40,13 @@ SOURCES=(
   "gencode.v46.metadata.SwissProt.gz|https://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/release_46/gencode.v46.metadata.SwissProt.gz"
   "GTEx_Analysis_v10_RNASeQCv2.4.2_gene_median_tpm.gct.gz|https://storage.googleapis.com/adult-gtex/bulk-gex/v10/rna-seq/GTEx_Analysis_v10_RNASeQCv2.4.2_gene_median_tpm.gct.gz"
   "dorothea_hs.rda|https://raw.githubusercontent.com/saezlab/dorothea/master/data/dorothea_hs.rda"
-  # --- Phase 2 sources (06_data_vision.md). Same curl + skip-if-present pattern. ---
+  # --- Phase 2 sources (docs/data-architecture.md). Same curl + skip-if-present pattern. ---
   "9606.protein.links.detailed.v12.0.txt.gz|https://stringdb-downloads.org/download/protein.links.detailed.v12.0/9606.protein.links.detailed.v12.0.txt.gz"
   "gwas-catalog-associations_ontology-annotated-full.zip|https://ftp.ebi.ac.uk/pub/databases/gwas/releases/latest/gwas-catalog-associations_ontology-annotated-full.zip"
   "ClinVarVariantSummary.txt.gz|https://ftp.ncbi.nlm.nih.gov/pub/clinvar/tab_delimited/variant_summary.txt.gz"
   "gnomad_v4_constraint.tsv|https://storage.googleapis.com/gcp-public-data--gnomad/release/4.1/constraint/gnomad.v4.1.constraint_metrics.tsv"
   "efo.json|https://github.com/EBISPOT/efo/releases/latest/download/efo.json"
-  # --- Phase 3 sources (08_phase3_build_prompt.md). Same curl + skip-if-present pattern. ---
+  # --- Phase 3 sources (docs/data-architecture.md). Same curl + skip-if-present pattern. ---
   # TCGA Pan-Cancer gene expression + phenotype (UCSC Xena / Toil public hubs, no auth).
   # CONSUMED by 13_tcga.py. The matrix is Toil RSEM FPKM, values already log2(fpkm+0.001);
   # the phenotype's `_primary_disease` joins to the curated crosswalk (see below).

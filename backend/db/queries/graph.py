@@ -48,9 +48,9 @@ async def search_nodes(query: str, limit: int = 10) -> list[dict]:
          END AS node_type
     WITH node, score, node_type,
          CASE WHEN node_type = 'gene'
-              THEN (EXISTS { (node)-[:ENCODES]->(:Protein) }
-                    OR EXISTS { (node)-[:PRODUCES]->(:Transcript)-[:TRANSLATES_TO]->(:Protein) })
-              ELSE false END AS is_tf
+              THEN (EXISTS { (node)-[:ENCODES]->(:Protein {subtype: 'transcription_factor'}) }
+                    OR EXISTS { (node)-[:PRODUCES]->(:Transcript)-[:TRANSLATES_TO]->(:Protein {subtype: 'transcription_factor'}) })
+              ELSE false END AS is_tf  // subtype filter REQUIRED post-ADR-0010 (full proteome)
     RETURN node_type,
            coalesce(node.ensembl_id, node.uniprot_id, node.ontology_id, node.ensembl_tx_id, node.hmdb_id, node.chebi_id) AS id,
            node.ensembl_id AS ensembl_id,

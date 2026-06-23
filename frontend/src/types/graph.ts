@@ -106,7 +106,7 @@ export interface GraphEdge {
   coexpression_score?: number | null;
   p_value?: number | null;
   consequence_type?: string | null;
-  // Phase 3 edge attributes (08_phase3_build_prompt.md).
+  // Phase 3 edge attributes (docs/data-architecture.md).
   log2fc?: number | null; // DIFFERENTIALLY_EXPRESSED (TCGA)
   direction?: string | null; // 'up' | 'down'
   tumor_type?: string | null; // TCGA cancer code

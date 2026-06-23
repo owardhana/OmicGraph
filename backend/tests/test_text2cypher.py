@@ -11,7 +11,7 @@ BENCHMARK_QUESTIONS = [
     "Which TFs repress MYC?",
     "What are the most confident TF regulators of EGFR in brain?",
     "Show me transcripts of TP53 with high expression in blood",
-    # Phase 2 — protein PPIs, disease/variant mechanisms (06_data_vision.md).
+    # Phase 2 — protein PPIs, disease/variant mechanisms (docs/data-architecture.md).
     "What proteins interact with TP53?",
     "Which genes are associated with type 2 diabetes?",
     "What are the pathogenic variants in BRCA1?",

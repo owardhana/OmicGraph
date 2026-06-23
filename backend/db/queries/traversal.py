@@ -25,7 +25,7 @@ from backend.db.neo4j_client import get_session
 _TRAVERSAL_REL_TYPES = [
     "REGULATES", "PRODUCES", "TRANSLATES_TO", "ENCODES",
     "INTERACTS_WITH", "ASSOCIATED_WITH", "IN_GENE", "IMPLICATED_IN",
-    # Phase 3 (08_phase3_build_prompt.md): TCGA differential expression edge
+    # Phase 3 (docs/data-architecture.md): TCGA differential expression edge
     # (Gene -> Disease) and the Recon3D enzymatic edge (Protein -> Metabolite).
     "DIFFERENTIALLY_EXPRESSED", "CATALYSES",
 ]
@@ -34,9 +34,16 @@ _TRAVERSAL_REL_TYPES = [
 # positive floor within a bounded number of hops; this is a hard safety cap.
 _MAX_DEPTH = 8
 
+# Structural ("vertical") edges — the molecular backbone gene->transcript->protein.
+# Used by the backbone pre-pass (ADR-0011) and to propagate seed-chain pinning.
+_STRUCTURAL_RELS = ["PRODUCES", "TRANSLATES_TO", "ENCODES"]
+# The vertical chain is short (gene->transcript->protein is 2 hops); 4 is ample
+# headroom and bounds the pre-pass.
+_BACKBONE_MAX_DEPTH = 4
+
 
 def _conductance(rel_type: str, rel_props: dict) -> float:
-    """Per-edge conductance (ADR-0005, extended for Phase 2 — 06_data_vision.md)."""
+    """Per-edge conductance (ADR-0005, extended for Phase 2 — docs/data-architecture.md)."""
     if rel_type == "REGULATES":
         c = rel_props.get("confidence")
         return float(c) if c is not None else 0.5
@@ -63,20 +70,29 @@ def _conductance(rel_type: str, rel_props: dict) -> float:
     return settings.STRUCTURAL_CONDUCTANCE
 
 
-# High-degree Phase-2 edge types capped per node per frontier ring. The prompt
-# specifies the cap for INTERACTS_WITH (hub proteins); the same hub explosion
-# applies to a gene's variants (IN_GENE) and diseases (IMPLICATED_IN) and a
-# common disease's variants (ASSOCIATED_WITH). Capping all four lets a hub seed
-# reach MULTIPLE hops (e.g. gene -> protein -> INTERACTS_WITH) within max_nodes
-# instead of one edge type flooding ring 1. Structural (PRODUCES/TRANSLATES_TO/
-# ENCODES) and REGULATES edges stay uncapped — they are the molecular backbone.
-# DIFFERENTIALLY_EXPRESSED is dense (a common cancer Disease has thousands of
-# up/down genes) so it is capped, top-k by |log2fc|. CATALYSES is NOT capped —
-# most proteins catalyse only 1-5 reactions (ADR-0009), no hub explosion.
+# High-degree edge types capped per node per frontier ring. The prompt specifies
+# the cap for INTERACTS_WITH (hub proteins); the same hub explosion applies to a
+# gene's variants (IN_GENE) and diseases (IMPLICATED_IN), a common disease's
+# variants (ASSOCIATED_WITH), and — now that the full proteome is loaded (ADR-0010)
+# — REGULATES: a master-regulator TF (TP53 regulates hundreds of genes) floods
+# ring 1 with regulated genes, starving the molecular backbone so a gene seed never
+# reaches its proteins/metabolites. Capping lets a hub seed reach MULTIPLE hops
+# (gene -> protein -> CATALYSES -> metabolite) within max_nodes. Structural
+# (PRODUCES/TRANSLATES_TO/ENCODES) edges stay uncapped — they ARE the backbone.
+# CATALYSES is NOT capped — most proteins catalyse only 1-5 reactions, no explosion.
+# Per-type cap: REGULATES gets a higher cap (REGULATES_MAX_EXPAND_PER_NODE) so the
+# regulatory story still reads; the rest use STRING_MAX_EXPAND_PER_NODE.
 _DENSE_CAPPED = {
     "INTERACTS_WITH", "ASSOCIATED_WITH", "IN_GENE", "IMPLICATED_IN",
-    "DIFFERENTIALLY_EXPRESSED",
+    "DIFFERENTIALLY_EXPRESSED", "REGULATES",
 }
+
+
+def _cap_for(rel_type: str) -> int:
+    """Per-node expansion cap for a dense edge type."""
+    if rel_type == "REGULATES":
+        return settings.REGULATES_MAX_EXPAND_PER_NODE
+    return settings.STRING_MAX_EXPAND_PER_NODE
 
 
 def _edge_rank(rel_type: str, rel_props: dict) -> float:
@@ -90,14 +106,15 @@ def _edge_rank(rel_type: str, rel_props: dict) -> float:
     if rel_type == "DIFFERENTIALLY_EXPRESSED":
         lfc = props.get("log2fc")
         return abs(float(lfc)) if lfc is not None else 0.0  # strongest fold-change first
+    if rel_type == "REGULATES":
+        return props.get("confidence") or 0.0  # highest-confidence DoRothEA targets first
     return 0.0  # IN_GENE / IMPLICATED_IN: structural rollup, no score -> first-k
 
 
 def _cap_dense_frontier(rows: list[dict]) -> list[dict]:
-    """Cap each node's expansion of the dense Phase-2 edge types to the top-k
-    (settings.STRING_MAX_EXPAND_PER_NODE) so no single hub floods one frontier
-    ring. Ties break deterministically by neighbour key."""
-    cap = settings.STRING_MAX_EXPAND_PER_NODE
+    """Cap each node's expansion of the dense edge types to the top-k (per-type cap)
+    so no single hub floods one frontier ring. Ties break deterministically by
+    neighbour key."""
     grouped: dict[tuple[str, str], list[dict]] = {}
     passthrough: list[dict] = []
     for row in rows:
@@ -109,7 +126,7 @@ def _cap_dense_frontier(rows: list[dict]) -> list[dict]:
         group.sort(
             key=lambda r: (-_edge_rank(rel_type, r["rel_props"]), r["nb_key"] or "")
         )
-        passthrough.extend(group[:cap])
+        passthrough.extend(group[: _cap_for(rel_type)])
     return passthrough
 
 
@@ -133,12 +150,14 @@ RETURN elementId(n) AS eid,
        coalesce(n.ensembl_id, n.ensembl_tx_id, n.uniprot_id, n.rsid, n.ontology_id, n.hmdb_id, n.chebi_id) AS node_key
 """
 
-# Expand one whole frontier ring in a single query.
-_EXPAND_RING = f"""
+# Expand one whole frontier ring in a single query. `$rel_types` lets the caller
+# restrict the edge set: the breadth phase passes all _TRAVERSAL_REL_TYPES; the
+# backbone pre-pass (ADR-0011) passes only structural edges, then only CATALYSES.
+_EXPAND_RING = """
 UNWIND $eids AS eid
 MATCH (n) WHERE elementId(n) = eid
 MATCH (n)-[r]-(nb)
-WHERE type(r) IN {_TRAVERSAL_REL_TYPES}
+WHERE type(r) IN $rel_types
 RETURN eid AS from_eid,
        elementId(nb) AS nb_eid,
        labels(nb)[0] AS nb_label,
@@ -157,12 +176,14 @@ RETURN eid AS from_eid,
 # is_tf for a gene now means "encodes a TF protein", reachable via the
 # transcript (PRODUCES -> TRANSLATES_TO) or directly (ENCODES). All our proteins
 # are TFs, so existence of either path is sufficient.
+# subtype filter REQUIRED post-ADR-0010: full proteome means ~20k genes reach a
+# Protein, so an unfiltered clause flags every protein-coding gene as a TF.
 _GENE_IS_TF = """
 UNWIND $ensembl_ids AS eid
 MATCH (g:Gene {ensembl_id: eid})
 RETURN eid AS ensembl_id,
-       (EXISTS { (g)-[:ENCODES]->(:Protein) }
-        OR EXISTS { (g)-[:PRODUCES]->(:Transcript)-[:TRANSLATES_TO]->(:Protein) }) AS is_tf
+       (EXISTS { (g)-[:ENCODES]->(:Protein {subtype: 'transcription_factor'}) }
+        OR EXISTS { (g)-[:PRODUCES]->(:Transcript)-[:TRANSLATES_TO]->(:Protein {subtype: 'transcription_factor'}) }) AS is_tf
 """
 
 
@@ -192,17 +213,42 @@ async def signal_decay_subgraph(
     signal: dict[str, float] = {}
     node_payload: dict[str, dict] = {}  # eid -> {label, props, key}
     edges: dict[str, dict] = {}  # rel_eid -> {rel_type, source, target, props, src_eid, tgt_eid}
-    # The seed molecule's own vertical chain (its gene + transcripts + protein,
-    # reachable from the seed via STRUCTURAL edges only) is pinned: it represents
-    # the same molecule as the seed and must survive the max_nodes cap, even when
-    # peripheral regulator-targets have higher signal.
+    # The seed molecule's own vertical chain (its gene + transcripts + protein, and —
+    # via the backbone pre-pass, ADR-0011 — the metabolites that protein catalyses) is
+    # pinned: it is the subject of the query and must survive the max_nodes cap, even
+    # when peripheral regulator-targets / variants have higher signal.
     structural_only: dict[str, bool] = {}
-    _STRUCTURAL = {"PRODUCES", "TRANSLATES_TO", "ENCODES"}
+    _STRUCTURAL = set(_STRUCTURAL_RELS)
+
+    def _record_node(row: dict) -> str:
+        nb = row["nb_eid"]
+        if nb not in node_payload:
+            node_payload[nb] = {
+                "label": row["nb_label"],
+                "props": row["nb_props"],
+                "key": row["nb_key"],
+            }
+        return nb
+
+    def _record_edge(row: dict) -> None:
+        # Dedup by relationship elementId.
+        edges.setdefault(
+            row["rel_eid"],
+            {
+                "rel_type": row["rel_type"],
+                "source": row["source_key"],
+                "target": row["target_key"],
+                "props": row["rel_props"],
+                "src_eid": row["start_eid"],
+                "tgt_eid": row["end_eid"],
+            },
+        )
 
     async with get_session() as session:
         seed_rows = await (await session.run(_RESOLVE_SEEDS, keys=seed_keys)).data()
         if not seed_rows:
             return {"nodes": [], "edges": []}
+        seed_eids = [row["eid"] for row in seed_rows]
         for row in seed_rows:
             signal[row["eid"]] = 1.0
             structural_only[row["eid"]] = True
@@ -212,11 +258,70 @@ async def signal_decay_subgraph(
                 "key": row["node_key"],
             }
 
+        async def _expand(eids: list[str], rel_types: list[str]) -> list[dict]:
+            return await (
+                await session.run(_EXPAND_RING, eids=eids, rel_types=rel_types)
+            ).data()
+
+        # ---- Phase 1: backbone pre-pass (ADR-0011) ---------------------------
+        # Walk ONLY structural edges from the seeds to full depth, pinning the whole
+        # vertical chain, then take exactly one CATALYSES hop from each pinned protein
+        # to its metabolites (pinned leaves). This guarantees the seed's own deep omics
+        # layers are both DISCOVERED and PINNED regardless of the breadth fan-out — a
+        # trim-time reservation cannot reserve what the discovery guard never reaches.
+        bb_frontier = list(seed_eids)
+        bb_expanded: set[str] = set()
+        bb_depth = 0
+        while bb_frontier and bb_depth < _BACKBONE_MAX_DEPTH:
+            rows = await _expand(bb_frontier, _STRUCTURAL_RELS)
+            bb_expanded.update(bb_frontier)
+            nxt: list[str] = []
+            for row in rows:
+                nb = _record_node(row)
+                structural_only[nb] = True
+                new_sig = signal[row["from_eid"]] * decay * _conductance(
+                    row["rel_type"], row["rel_props"]
+                )
+                if new_sig > signal.get(nb, 0.0):
+                    signal[nb] = new_sig
+                _record_edge(row)
+                if nb not in bb_expanded:
+                    nxt.append(nb)
+            bb_frontier = [e for e in dict.fromkeys(nxt) if e not in bb_expanded]
+            bb_depth += 1
+
+        # One CATALYSES hop from every pinned protein -> its metabolites. Capped per
+        # protein (deterministic by metabolite key) so a promiscuous enzyme can't pin
+        # hundreds of nodes past max_nodes. Metabolites are LEAVES — never added to a
+        # frontier, so cofactor hubs (ATP/NAD+) can't flood from here (ADR-0011).
+        bb_proteins = [e for e, p in node_payload.items() if p["label"] == "Protein"]
+        if bb_proteins:
+            cat_rows = await _expand(bb_proteins, ["CATALYSES"])
+            per_protein: dict[str, list[dict]] = {}
+            for row in cat_rows:
+                if row["nb_label"] == "Metabolite":
+                    per_protein.setdefault(row["from_eid"], []).append(row)
+            cap = settings.BACKBONE_MAX_METABOLITES_PER_PROTEIN
+            for group in per_protein.values():
+                group.sort(key=lambda r: r["nb_key"] or "")
+                for row in group[:cap]:
+                    nb = _record_node(row)
+                    structural_only[nb] = True  # pinned leaf
+                    new_sig = signal[row["from_eid"]] * decay * _conductance(
+                        "CATALYSES", row["rel_props"]
+                    )
+                    if new_sig > signal.get(nb, 0.0):
+                        signal[nb] = new_sig
+                    _record_edge(row)
+
+        # ---- Phase 2: breadth signal-decay BFS -------------------------------
+        # Start from the seeds only (NOT the pinned backbone — a backbone metabolite
+        # in the frontier would expand CATALYSES and pull in the whole metabolic net).
         expanded: set[str] = set()
-        frontier = list(signal.keys())
+        frontier = list(seed_eids)
         depth = 0
         while frontier and depth < _MAX_DEPTH and len(node_payload) < max_nodes:
-            rows = await (await session.run(_EXPAND_RING, eids=frontier)).data()
+            rows = await _expand(frontier, _TRAVERSAL_REL_TYPES)
             rows = _cap_dense_frontier(rows)
             expanded.update(frontier)
             next_frontier: list[str] = []
@@ -225,31 +330,17 @@ async def signal_decay_subgraph(
                 new_sig = signal[row["from_eid"]] * decay * cond
                 if new_sig < min_signal:
                     continue
-                nb = row["nb_eid"]
-                if nb not in node_payload:
-                    node_payload[nb] = {
-                        "label": row["nb_label"],
-                        "props": row["nb_props"],
-                        "key": row["nb_key"],
-                    }
+                nb = _record_node(row)
                 if new_sig > signal.get(nb, 0.0):
                     signal[nb] = new_sig
                 # Propagate seed-chain pinning along structural edges only.
                 if structural_only.get(row["from_eid"]) and row["rel_type"] in _STRUCTURAL:
                     structural_only[nb] = True
-                # Record the edge (dedup by relationship elementId).
-                edges.setdefault(
-                    row["rel_eid"],
-                    {
-                        "rel_type": row["rel_type"],
-                        "source": row["source_key"],
-                        "target": row["target_key"],
-                        "props": row["rel_props"],
-                        "src_eid": row["start_eid"],
-                        "tgt_eid": row["end_eid"],
-                    },
-                )
-                if nb not in expanded:
+                _record_edge(row)
+                # Leaf rule (ADR-0011): a metabolite expands only when it is a SEED
+                # (seeds sit in the initial frontier). A metabolite discovered here is
+                # peripheral -> never re-expanded, so hub cofactors can't flood.
+                if nb not in expanded and row["nb_label"] != "Metabolite":
                     next_frontier.append(nb)
             # Dedup frontier, keep only not-yet-expanded.
             frontier = [e for e in dict.fromkeys(next_frontier) if e not in expanded]

@@ -84,6 +84,19 @@ export function useGraph() {
     }
   }, []);
 
+  const loadMetabolite = useCallback(async (id: string) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const resp = await api.getMetaboliteGraph(id);
+      setGraphData(toForceGraph(resp));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
   const expandNode = useCallback(async (symbol: string) => {
     try {
       const resp = await api.getGeneGraph(symbol);
@@ -108,6 +121,7 @@ export function useGraph() {
     error,
     loadGene,
     loadDisease,
+    loadMetabolite,
     expandNode,
     mergeInto,
     clearGraph,

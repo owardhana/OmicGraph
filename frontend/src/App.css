@@ -863,7 +863,9 @@
 /* ---- entity browser refinements (pin selected, badge, pulse) ---- */
 .eb-row.selected { background: var(--panel-hover); }
 .eb-badge {
-  margin-left: 6px;
+  /* The handle is writing-mode: vertical-rl, so the badge flows BELOW the label;
+     a top margin (not left) gives it clearance so it doesn't clip the "R". */
+  margin-top: 6px;
   font-size: 10px;
   font-weight: 700;
   background: var(--active);

@@ -22,11 +22,15 @@ _TISSUE_ALIASES = {
     "brain": "brain_prefrontal_cortex",
 }
 
-# A gene "is a TF" iff it encodes one of our (TF) proteins, via the transcript
-# (the path all 117 proteins actually use) or the ENCODES fallback.
+# A gene "is a TF" iff it encodes a TF *protein*, via the transcript
+# (PRODUCES -> TRANSLATES_TO) or the ENCODES fallback. The subtype filter is
+# REQUIRED post-ADR-0010: the full proteome means ~20k genes now reach *some*
+# Protein, so an unfiltered "has a protein" clause flags every protein-coding
+# gene as a TF (ADR-0004's "is_tf breaks SILENTLY"). Only subtype matters.
 _GENE_IS_TF_CLAUSE = (
-    "(EXISTS { (g)-[:ENCODES]->(:Protein) } "
-    "OR EXISTS { (g)-[:PRODUCES]->(:Transcript)-[:TRANSLATES_TO]->(:Protein) })"
+    "(EXISTS { (g)-[:ENCODES]->(:Protein {subtype: 'transcription_factor'}) } "
+    "OR EXISTS { (g)-[:PRODUCES]->(:Transcript)"
+    "-[:TRANSLATES_TO]->(:Protein {subtype: 'transcription_factor'}) })"
 )
 
 

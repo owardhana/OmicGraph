@@ -1,6 +1,6 @@
 """ETL 14 — Metabolomics: Metabolite nodes + CATALYSES edges from Recon3D (ADR-0009).
 
-Topology from a bulk file (06_data_vision.md Pattern 1 / 09_data_catalog.md rows
+Topology from a bulk file (docs/data-architecture.md Pattern 1 / docs/data-architecture.md rows
 13-14). Parses the Recon3D human metabolic reconstruction COBRA model
 (``Recon3D_301.mat``, read with scipy.io.loadmat) to extract:
   - (:Metabolite {hmdb_id|chebi_id, name, formula, charge, inchikey})  from `mets`

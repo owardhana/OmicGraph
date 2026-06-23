@@ -4,7 +4,7 @@ import pytest
 
 from backend.api import models
 from backend.api.routes.graph import (
-    _component_count,
+    _component_map,
     _merge_raw,
     _node_key,
     graph_multi,
@@ -184,7 +184,10 @@ async def test_multi_seed_disconnected():
     }
     merged = _merge_raw([raw_a, raw_b])
     keys = {k for n in merged["nodes"] if (k := _node_key(n)) is not None}
-    assert _component_count(keys, merged["edges"]) == 2
+    comp_of = _component_map(keys, merged["edges"])
+    assert len(set(comp_of.values())) == 2  # two non-overlapping subgraphs
+    # The two seeds land in different components -> would warn (>=2 seeds).
+    assert comp_of["ENSG_A1"] != comp_of["ENSG_B1"]
 
 
 async def test_shortest_path_found():
@@ -294,6 +297,27 @@ async def test_metabolite_traversal(neo4j_session):
     sub = await get_metabolite_neighborhood(rows[0]["id"])
     assert len(sub["nodes"]) > 0
     assert any(n["kind"] == "metabolite" for n in sub["nodes"])
+
+
+async def test_backbone_surfaces_seed_metabolites(neo4j_session):
+    # ADR-0011: an enzyme/metabolic-gene seed must surface its OWN metabolites via the
+    # backbone pre-pass (gene -> protein -> CATALYSES -> metabolite), even though the
+    # regulatory/variant fan-out would otherwise fill the node budget before the deep
+    # vertical chain is ever discovered.
+    rows = await (
+        await neo4j_session.run(
+            "MATCH (g:Gene)-[:ENCODES|PRODUCES|TRANSLATES_TO*1..2]->"
+            "(:Protein)-[:CATALYSES]->(:Metabolite) "
+            "RETURN g.ensembl_id AS eid LIMIT 1"
+        )
+    ).data()
+    if not rows or not rows[0]["eid"]:
+        pytest.skip("proteome/Recon3D not loaded — no enzyme gene to seed")
+    raw = await signal_decay_subgraph([rows[0]["eid"]])
+    kinds = {n["kind"] for n in raw["nodes"]}
+    assert "metabolite" in kinds, (
+        "enzyme-gene seed must surface its backbone metabolites (ADR-0011)"
+    )
 
 
 async def test_tcga_traversal():

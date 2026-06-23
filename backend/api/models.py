@@ -122,7 +122,7 @@ class GraphEdge(BaseModel):
     coexpression_score: Optional[float] = None
     p_value: Optional[float] = None  # ASSOCIATED_WITH (GWAS)
     consequence_type: Optional[str] = None  # IN_GENE
-    # Phase 3 edge attributes (08_phase3_build_prompt.md).
+    # Phase 3 edge attributes (docs/data-architecture.md).
     log2fc: Optional[float] = None  # DIFFERENTIALLY_EXPRESSED (TCGA)
     direction: Optional[str] = None  # "up" | "down"
     tumor_type: Optional[str] = None  # TCGA cancer code (e.g. "LUAD")

@@ -18,7 +18,7 @@ export const DISEASE_LAYER_Z = 1200;
 // so genomics reads at the bottom and the phenotype layer at the top. Y-centres
 // are evenly spaced (300 apart) so the force layout reads as distinct stacked
 // planes. `color` tints the (intentionally muted) layer plane — the metabolomics
-// plane is orange and the phenotype plane pink (ADR-0009 palette); the lower three
+// plane is cyan and the phenotype plane pink (ADR-0009 palette); the lower three
 // stay neutral so node colour carries the meaning. The layer toggle's swatches are
 // NOT defined here: they derive from LAYER_NODE_COLORS (below) so the toggle, the
 // legend, and the graph all read their colours from NODE_COLORS — one source.
@@ -29,7 +29,7 @@ export const LAYERS: Record<
   genomics: { y: -300, color: '#6b7280', label: 'Genomics' },
   transcriptomics: { y: 0, color: '#6b7280', label: 'Transcriptomics' },
   proteomics: { y: 300, color: '#6b7280', label: 'Proteomics' },
-  metabolomics: { y: 600, color: '#fb923c', label: 'Metabolomics' },
+  metabolomics: { y: 600, color: '#22d3ee', label: 'Metabolomics' },
   phenotype: { y: 900, color: '#f472b6', label: 'Phenotype' },
 };
 
@@ -47,7 +47,7 @@ export const NODE_COLORS = {
   gene: '#4ade80', // green — gene
   transcript: '#60a5fa', // blue — transcript
   variant: '#2dd4bf', // teal — variant (in the genomics plane)
-  metabolite: '#fb923c', // orange — metabolite (metabolomics plane, ADR-0009)
+  metabolite: '#22d3ee', // cyan — metabolite (metabolomics plane; recoloured from orange to deconflict from TF amber)
   disease: '#f472b6', // hot pink — disease (phenotype plane)
 };
 
@@ -74,7 +74,7 @@ export const EDGE_COLORS = {
   associated_with: '#f472b6',
   in_gene: '#2dd4bf',
   implicated_in: '#fb923c',
-  catalyses: '#fb923c', // orange — enzymatic Protein->Metabolite (ADR-0009)
+  catalyses: '#22d3ee', // cyan — enzymatic Protein->Metabolite (matches metabolite node; ADR-0009)
   differentially_expressed: '#f59e0b', // amber — TCGA cancer DE (Gene->Disease)
   unknown: '#9ca3af',
 };
