@@ -185,6 +185,14 @@ class QueryResponse(BaseModel):
     error: Optional[str] = None
 
 
+class ChatRequest(BaseModel):
+    """Agentic chatbot turn (Feature 1). ``session_id`` keys conversational memory;
+    the client generates one per conversation and reuses it for follow-ups."""
+    session_id: str
+    message: str
+    tissue: str = "all"
+
+
 class EdgeDetail(BaseModel):
     rel_type: str
     source: str

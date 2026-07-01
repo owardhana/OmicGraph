@@ -21,6 +21,12 @@ via `REGULATES`. Tissue is a visual opacity channel, not a separate graph.
 variants, EFO diseases, TCGA differential expression, and a connected Recon3D
 metabolite layer. See [`docs/roadmap.md`](docs/roadmap.md) for the live tally.
 
+Query it two ways: a single-shot **Text2Cypher** box, or an **agentic chat assistant**
+(`ChatAgent`) that streams answers while calling read-only graph tools (search,
+subgraph, shortest-path, read-only Cypher) with conversational memory. Runs locally,
+or **24/7 in production** on a free Oracle Cloud VM — see
+[`docs/deploy/oracle-runbook.md`](docs/deploy/oracle-runbook.md).
+
 ---
 
 ## Architecture
@@ -42,7 +48,8 @@ Module dependency rules (no circular deps): `frontend → backend API only`;
 ```
 Project_OMNI/
 ├── README.md                  ← this file
-├── docker-compose.yml         ← Neo4j (+ backend/frontend)
+├── docker-compose.yml         ← Neo4j (+ backend/frontend) — local dev
+├── docker-compose.prod.yml    ← production stack (Neo4j + backend + Caddy)
 ├── .env.example               ← env var template (no secrets committed)
 ├── CONTEXT.md                 ← domain glossary (canonical terms)
 ├── AGENTS.md                  ← agent definitions + safety rules
@@ -51,11 +58,13 @@ Project_OMNI/
 │   ├── vision-and-mvp.md      ← why it exists, scope, design decisions
 │   ├── data-architecture.md   ← data model + full field-level provenance catalog
 │   ├── roadmap.md             ← current state + future/gated work
-│   └── adr/                   ← Architecture Decision Records (0001–0011)
+│   ├── adr/                   ← Architecture Decision Records (0001–0013)
+│   ├── deploy/                ← Oracle Cloud production runbook
+│   └── design/                ← forward-looking design docs (Feature 2, cloud migration)
 │
-├── etl/                       ← ingestion scripts, run in DAG order (01→14)
+├── etl/                       ← ingestion scripts, run in DAG order (01→16)
 │   ├── 00_download.sh         ← fetch raw sources into data/raw/
-│   ├── 01_hgnc.py … 14_metabolomics.py
+│   ├── 01_hgnc.py … 16_gnomad_af.py
 │   ├── run_pipeline.py        ← Python DAG runner (declares order, logs DataSource)
 │   └── reference/             ← curated crosswalks (e.g. tcga_disease_to_efo.tsv)
 │
@@ -64,11 +73,13 @@ Project_OMNI/
 │   ├── config.py              ← env-driven settings (never hardcode thresholds)
 │   ├── api/{routes,models}    ← endpoints + Pydantic schemas
 │   ├── db/{neo4j_client, queries}  ← connection pool + Cypher modules
-│   ├── agents/                ← citation + embedding agents
+│   ├── agents/                ← query, citation, embedding + chat agents (+ chat tools)
 │   ├── llm/{client,prompts}   ← OpenRouter wrapper + versioned prompts
 │   └── tests/                 ← pytest (Cypher correctness, agent safety)
 │
 ├── frontend/src/{components,hooks,api,types,styles}
+├── deploy/                     ← Dockerfile.web + Caddyfile + .env.prod.example
+├── scripts/                    ← dump_graph.sh / restore_graph.sh (graph transfer)
 ├── data/{raw,processed,neo4j}  ← gitignored (large files + DB volume)
 └── hpc/                        ← HPC / Singularity scaffolding
 ```
@@ -81,6 +92,8 @@ Project_OMNI/
 | [`docs/data-architecture.md`](docs/data-architecture.md) | Layer model, ETL patterns, **full provenance catalog**, indexes, conductance, tunables, agent writes |
 | [`docs/roadmap.md`](docs/roadmap.md) | Current graph state, what's done, what's deferred/gated |
 | [`docs/adr/`](docs/adr/) | Architecture Decision Records — the *why* behind irreversible choices |
+| [`docs/deploy/`](docs/deploy/oracle-runbook.md) | Production deployment runbook (Oracle Cloud free tier) — provision → firewall → graph transfer → run → operate |
+| [`docs/design/`](docs/design/) | Forward-looking design docs (literature-extraction agent, cloud migration rationale) |
 | [`CONTEXT.md`](CONTEXT.md) | Domain glossary (canonical terms) |
 | [`AGENTS.md`](AGENTS.md) | Agent definitions + safety rules |
 
@@ -89,7 +102,9 @@ proteins) · [0005](docs/adr/0005-signal-decay-traversal.md) (signal-decay trave
 · [0006](docs/adr/0006-tissue-as-visual-channel.md) (tissue as opacity) ·
 [0009](docs/adr/0009-metabolomics-layer-4.md) (metabolomics layer) ·
 [0010](docs/adr/0010-full-proteome.md) (full proteome) ·
-[0011](docs/adr/0011-backbone-guaranteed-traversal.md) (backbone-guaranteed traversal).
+[0011](docs/adr/0011-backbone-guaranteed-traversal.md) (backbone-guaranteed traversal) ·
+[0012](docs/adr/0012-metabolite-bridge-connectivity.md) (metabolite bridge — opt-in) ·
+[0013](docs/adr/0013-literature-extraction-trust-model.md) (literature-extraction trust model).
 
 ---
 
@@ -104,7 +119,7 @@ cp .env.example .env        # then fill in OPENROUTER_API_KEY, NEO4J_PASSWORD, e
 
 # 3. Load data (one-time; topology = bulk files, enrichment = APIs)
 bash etl/00_download.sh                       # fetch raw sources into data/raw/
-etl/.venv/bin/python etl/run_pipeline.py      # runs 01→14 in dependency order
+etl/.venv/bin/python etl/run_pipeline.py      # runs 01→16 in dependency order
 
 # 4. Backend
 backend/.venv/bin/uvicorn backend.main:app --reload   # http://localhost:8000
@@ -132,6 +147,30 @@ backend/.venv/bin/python -m pytest backend/tests/ -q
 
 `test_queries.py` checks Cypher correctness against the live Neo4j; `test_agents.py`
 asserts the citation agent writes PMIDs only (never topology); `test_text2cypher.py`
-checks benchmark questions produce valid read-only Cypher. (Note: pytest import is
-slow when the repo lives under an iCloud-synced directory; data gates can also be
-confirmed via direct Cypher.)
+checks benchmark questions produce valid read-only Cypher; `test_traversal_bridge.py`
+locks the ADR-0011/0012 golden traversal values. (Note: pytest import is slow when the
+repo lives under an iCloud-synced directory; data gates can also be confirmed via
+direct Cypher.)
+
+## Deployment (production)
+
+OmniGraph runs 24/7 on a single free-tier **Oracle Cloud Ampere A1** VM via
+[`docker-compose.prod.yml`](docker-compose.prod.yml): Neo4j (private, loopback-bound),
+the FastAPI backend (private), and **Caddy** as the only public service — it serves the
+built frontend and reverse-proxies `/api` (with SSE streaming for chat), auto-HTTPS when
+pointed at a real domain.
+
+```bash
+# graph transfer (laptop → server): offline dump, not re-ETL
+bash scripts/dump_graph.sh        # → dumps/neo4j.dump
+# on the server, after copying the dump up:
+docker compose -f docker-compose.prod.yml --env-file deploy/.env.prod up -d neo4j
+bash scripts/restore_graph.sh
+docker compose -f docker-compose.prod.yml --env-file deploy/.env.prod up -d --build
+```
+
+Full step-by-step (provision → two-layer firewall → graph transfer → run → operate →
+troubleshoot) in **[`docs/deploy/oracle-runbook.md`](docs/deploy/oracle-runbook.md)**;
+architecture rationale in [`docs/design/cloud-migration.md`](docs/design/cloud-migration.md).
+The public chat endpoint is unauthenticated and spends against your OpenRouter key — set
+a spend cap or add an auth/rate-limit gate before advertising the URL.

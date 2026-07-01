@@ -33,3 +33,37 @@ async def complete(model: str, messages: list[dict], **kwargs) -> str:
         model=model, messages=messages, **kwargs
     )
     return response.choices[0].message.content or ""
+
+
+async def stream_chat(model: str, messages: list[dict], tools: list[dict] | None = None):
+    """Stream one turn. Yields ('text', delta) for content tokens, then a final
+    ('message', {role, content, tool_calls}) once the turn completes — so the caller
+    can forward tokens live AND inspect tool_calls to drive the agent loop. Tool-call
+    fragments arrive as indexed deltas and are reassembled here."""
+    kwargs: dict = {"model": model, "messages": messages, "stream": True}
+    if tools:
+        kwargs["tools"] = tools
+        kwargs["tool_choice"] = "auto"
+    stream = await get_client().chat.completions.create(**kwargs)
+
+    content_parts: list[str] = []
+    tool_acc: dict[int, dict] = {}  # index -> {id, name, arguments(str)}
+    async for chunk in stream:
+        delta = chunk.choices[0].delta
+        if delta.content:
+            content_parts.append(delta.content)
+            yield ("text", delta.content)
+        for tc in (delta.tool_calls or []):
+            slot = tool_acc.setdefault(tc.index, {"id": "", "name": "", "arguments": ""})
+            if tc.id:
+                slot["id"] = tc.id
+            if tc.function and tc.function.name:
+                slot["name"] = tc.function.name
+            if tc.function and tc.function.arguments:
+                slot["arguments"] += tc.function.arguments
+    calls = [tool_acc[i] for i in sorted(tool_acc)]
+    yield ("message", {
+        "role": "assistant",
+        "content": "".join(content_parts) or None,
+        "tool_calls": calls,
+    })
