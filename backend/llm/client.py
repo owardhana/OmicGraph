@@ -35,22 +35,6 @@ async def complete(model: str, messages: list[dict], **kwargs) -> str:
     return response.choices[0].message.content or ""
 
 
-async def chat_with_tools(model: str, messages: list[dict], tools: list[dict],
-                          **kwargs) -> dict:
-    """One tool-enabled turn. Returns a normalised assistant message dict:
-    {"role": "assistant", "content": str|None, "tool_calls": [{id,name,arguments}]}.
-    The ChatAgent loop runs tool_calls then calls again until content with no calls."""
-    response = await get_client().chat.completions.create(
-        model=model, messages=messages, tools=tools, tool_choice="auto", **kwargs
-    )
-    msg = response.choices[0].message
-    calls = [
-        {"id": c.id, "name": c.function.name, "arguments": c.function.arguments}
-        for c in (msg.tool_calls or [])
-    ]
-    return {"role": "assistant", "content": msg.content, "tool_calls": calls}
-
-
 async def stream_chat(model: str, messages: list[dict], tools: list[dict] | None = None):
     """Stream one turn. Yields ('text', delta) for content tokens, then a final
     ('message', {role, content, tool_calls}) once the turn completes — so the caller

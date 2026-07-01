@@ -11,7 +11,6 @@ Streaming: ``run_stream`` is an async generator of event dicts the SSE route for
 QueryAgent (the tools never write; there is no write path).
 """
 
-import json
 import logging
 
 from backend.agents.tools import TOOL_SCHEMAS, dispatch_tool
@@ -98,20 +97,6 @@ class ChatAgent:
         await save_turn(session_id, "user", question)
         await save_turn(session_id, "assistant", answer)
         yield {"type": "done", "answer": answer}
-
-    async def run(self, session_id: str, question: str, tissue: str = "all") -> dict:
-        """Non-streaming convenience wrapper: drain the stream into a final answer +
-        the tool names used (for the plain POST /chat endpoint / tests)."""
-        answer = ""
-        tools_used: list[str] = []
-        async for ev in self.run_stream(session_id, question, tissue):
-            if ev["type"] == "tool" and ev["status"] == "running":
-                tools_used.append(ev["name"])
-            elif ev["type"] == "done":
-                answer = ev["answer"]
-            elif ev["type"] == "error":
-                return {"answer": ev["message"], "tools_used": tools_used, "error": True}
-        return {"answer": answer, "tools_used": tools_used, "error": False}
 
 
 chat_agent = ChatAgent()

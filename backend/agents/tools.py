@@ -25,7 +25,7 @@ _MAX_ROWS = 30
 _MAX_NODES_RETURNED = 60
 
 
-def _display(kind: str, props: dict) -> str:
+def _display(props: dict) -> str:
     return (
         props.get("hgnc_symbol")
         or props.get("name")
@@ -63,7 +63,7 @@ def _compact_graph(raw: dict) -> dict:
         "edges_by_type": by_rel,
         "nodes": [
             {"kind": n["kind"], "id": _node_id(n["props"]),
-             "name": _display(n["kind"], n["props"])}
+             "name": _display(n["props"])}
             for n in nodes[:_MAX_NODES_RETURNED]
         ],
         "edges": [
@@ -107,7 +107,7 @@ async def _shortest_path(from_id: str, from_type: str, to_id: str,
         "quality": resp.path_quality,
         "hops": resp.hop_count,
         "nodes": [
-            {"kind": n.node_type, "name": _display(n.node_type, n.model_dump())}
+            {"kind": n.node_type, "name": _display(n.model_dump())}
             for n in resp.nodes
         ],
         "warning": resp.warning,

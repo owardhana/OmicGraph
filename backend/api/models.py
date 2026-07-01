@@ -193,13 +193,6 @@ class ChatRequest(BaseModel):
     tissue: str = "all"
 
 
-class ChatResponse(BaseModel):
-    """Non-streaming chat reply (the SSE route streams the same content as events)."""
-    answer: str
-    tools_used: list[str] = Field(default_factory=list)
-    error: bool = False
-
-
 class EdgeDetail(BaseModel):
     rel_type: str
     source: str
