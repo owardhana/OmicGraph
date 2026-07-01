@@ -8,9 +8,11 @@ Each agent has a defined scope, trigger, and hard constraints.
 ## Agent taxonomy
 
 ```
-MVP agents (build now)
+MVP agents (built)
 ├── QueryAgent       — Text2Cypher, per-request
-└── CitationAgent    — PubMed PMID enrichment, nightly
+├── CitationAgent    — PubMed PMID enrichment, nightly
+├── EmbeddingAgent   — semantic-search embeddings, nightly (1am UTC)
+└── ChatAgent        — agentic tool-loop over the graph, streaming, per-request
 
 v2 agents (post-demo)
 ├── LiteratureAgent  — bioRxiv/PubMed new edge proposals
@@ -110,6 +112,44 @@ fetch batch of edges with no citations
 **Tools:** NCBI E-utilities API, Neo4j driver, OpenRouter API (optional relevance check, haiku model)
 
 **Files:** `backend/agents/citation_agent.py`
+
+---
+
+### 3. ChatAgent
+
+**Role:** Conversational, agentic assistant over the graph. Multi-turn, streaming,
+tool-using — the analyst-facing counterpart to QueryAgent's single-shot Text2Cypher.
+
+**Trigger:** Per user request (HTTP `POST /api/chat/stream`, Server-Sent Events).
+
+**Flow:**
+```
+load prior turns (conversational memory) → [system, ...history, user]
+  → stream an LLM turn (OpenRouter, SYNTHESIS_MODEL) advertising 4 read-only tools
+  → if it requested tools: run them, append results, loop (max 6 iterations)
+  → else: the streamed text is the final answer
+  → forced final no-tools turn if the tool budget is exhausted
+  → persist the user + assistant turns
+```
+
+**Tools (all READ-ONLY, no write path):** `search_graph` (resolve name→id),
+`get_subgraph` (signal-decay neighbourhood), `shortest_path` (explain how two entities
+connect), `run_cypher` (read-only aggregations — routed through `validate_cypher`, the
+same single-MATCH guard QueryAgent uses).
+
+**Memory:** prior user/assistant *text* turns stored in Neo4j as
+`(:ChatSession {id})-[:HAS_TURN]->(:ChatTurn {role, content, seq, ts})`. Tool calls are
+ephemeral (re-run on demand), never persisted. Operational nodes, never biological topology.
+
+**Constraints:**
+- Never writes to the graph — every tool is read-only; `run_cypher` is validator-gated.
+- Tool loop is bounded (`_MAX_TOOL_ITERS`=6); errors surface as a clean event, not a 500.
+- Tool results are compacted (trimmed fields, capped lists) to bound context + token cost.
+
+**Tools:** OpenRouter API (streaming + tool-calling), Neo4j driver, Cypher validator.
+
+**Files:** `backend/agents/chat_agent.py`, `backend/agents/tools.py`,
+`backend/db/queries/chat.py`, `backend/api/routes/chat.py`.
 
 ---
 
@@ -246,6 +286,7 @@ Graph = shared state / message bus. No inter-agent HTTP calls.
 
 ```
 POST /admin/agents/citation/run       → trigger CitationAgent manually
+POST /admin/agents/embedding/run      → trigger EmbeddingAgent manually (one batch)
 GET  /admin/agents/citation/log       → last N CitationRun nodes
 GET  /admin/candidates                → EdgeCandidates pending review (v2)
 POST /admin/candidates/{id}/approve   → human approve EdgeCandidate (v2)

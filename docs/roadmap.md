@@ -20,7 +20,7 @@ Live in Neo4j Community 5.x (Docker, named volume).
 | `INTERACTS_WITH` | 101,464 (STRING @ 0.95) |
 | `CATALYSES` | 24,560 (94% of metabolites connected) |
 | `DIFFERENTIALLY_EXPRESSED` | 128,714 (16 TCGA cohorts) |
-| `Variant.gnomad_af` | populating — 325,043 rs-variants via Ensembl REST (16_gnomad_af; long resumable backfill) |
+| `Variant.gnomad_af` | backfilling on the production box — ~325k rs-variants via Ensembl REST (16_gnomad_af; ~11% at cutover, resumable) |
 | `cancer_gene` flags | 752 (580 tier-1, 172 tier-2; COSMIC v104) |
 
 ---
@@ -57,11 +57,19 @@ Live in Neo4j Community 5.x (Docker, named volume).
   ClinVar-variants first. Long backfill (~325k rs-variants) runs detached.
 - **Agentic chatbot (Feature 1):** `ChatAgent` tool-loop over read-only graph tools
   (search / subgraph / shortest-path / read-only Cypher) with SSE streaming + Neo4j
-  conversational memory (`:ChatSession`/`:ChatTurn`). Endpoints `/api/chat` + `/chat/stream`;
+  conversational memory (`:ChatSession`/`:ChatTurn`). Endpoint `/api/chat/stream` (SSE);
   frontend `ChatPanel`. Verified live (TP53↔EGFR path, LDHA metabolites).
 - **ETL index self-sufficiency:** `run_pipeline.ensure_indexes()` creates MERGE-key
   B-tree indexes before load — a bare rebuild (no backend) was previously index-free and
   hung on quadratic MERGEs.
+- **Cloud deployment — 24/7 production (shipped 2026-07-01):** self-hosted on a free
+  Oracle Cloud Ampere A1 VM via [`docker-compose.prod.yml`](../docker-compose.prod.yml)
+  — Neo4j (private, loopback-bound) + FastAPI backend (private) + **Caddy** (the only
+  public service; serves the built frontend, proxies `/api` with SSE, auto-HTTPS-ready).
+  Graph moved by offline dump → scp → restore (`scripts/dump_graph.sh` /
+  `restore_graph.sh`), not re-ETL; the enrichment crawls finish on the always-on box.
+  Verified live end-to-end (frontend + `/api/gene/TP53` both HTTP 200 from the public
+  internet). Runbook: [`docs/deploy/oracle-runbook.md`](deploy/oracle-runbook.md).
 
 ### Verification notes
 - Layer-Z: `METABOLITE_LAYER_Z=900`, `DISEASE_LAYER_Z=1200` (constants, audited;
@@ -73,14 +81,18 @@ Live in Neo4j Community 5.x (Docker, named volume).
 
 ---
 
-## In progress
+## In progress (running on the production box)
 
-- **`06_uniprot_enrich`** over the full ~20k proteome (function text → embeddings;
-  ~5-6h resumable REST crawl) — running detached. Completes semantic protein search
-  once the embedding agent drains the newly-enriched proteins.
-- **gnomAD AF backfill** — `16_gnomad_af.py` populating `Variant.gnomad_af` over
-  325,043 rs-variants (Ensembl `pops=1` is ~0.37s/variant, so a multi-hour resumable
-  backfill; ClinVar-significant variants first).
+The enrichment crawls now run 24/7 on the deployed Oracle A1 VM — they kept dying under
+laptop contention, so the always-on box is their proper home. Both are resumable +
+`IS NULL`-guarded; watch coverage climb per the runbook's Phase 8.
+
+- **`06_uniprot_enrich`** — function text over the full ~20k proteome (~85% loaded at
+  cutover). Semantic protein search completes once the embedding backfill drains the
+  newly-enriched proteins (embeddings ~0% at cutover — needs the *driven* backfill, not
+  the nightly batch=50 agent; runbook Phase 7).
+- **gnomAD AF backfill** — `16_gnomad_af.py` populating `Variant.gnomad_af` over ~325k
+  rs-variants (~11% at cutover; the long pole, ~1–1.5 days; ClinVar-significant first).
 
 ## Deferred / optional
 
@@ -90,9 +102,6 @@ Live in Neo4j Community 5.x (Docker, named volume).
 - **Literature extraction agent** — new-edge proposals. Design brainstorm now written
   ([`docs/design/feature-2-literature-extraction.md`](design/feature-2-literature-extraction.md));
   build is a separate session (NER + entity-linking + candidate-staging trust firewall).
-- **Cloud / 24-7 migration** — plan written
-  ([`docs/design/cloud-migration.md`](design/cloud-migration.md)): self-host on Oracle
-  A1, Neo4j stays the core, optional Supabase sidecar. Deferred.
 - **Horizontal metabolite reach-through for pure-TF seeds** — surfacing
   metabolites that belong to a TF's regulated genes. Explicitly rejected as the
   current floor (semantically muddier; ADR-0011 "Rejected alternatives"); the

@@ -1,10 +1,12 @@
 # Design plan — Server / cloud migration
 
-Status: **Plan / deferred.** Not started; no ADR yet. Captures the target architecture
-for moving OmniGraph off the local iCloud-synced laptop onto a free 24/7 host, and the
-open decisions (Oracle vs a managed sidecar, API vs local model). Perishable free-tier
-facts are mirrored in the `project_oracle_migration_deferred` memory note — re-verify
-before acting.
+Status: **SHIPPED 2026-07-01.** Deployed to a free Oracle Cloud Ampere A1 VM; running
+24/7. This doc is the *rationale* (why this architecture); the executed step-by-step is
+[`docs/deploy/oracle-runbook.md`](../deploy/oracle-runbook.md). The open decisions below
+resolved as: **Oracle A1** (self-hosted Neo4j, no managed sidecar), **OpenRouter API**
+(no local GPU model), **strictly Always-Free** (accepting the 12 GB cap + a keep-alive
+cron vs the 7-day idle reclamation). Perishable free-tier facts are mirrored in the
+`project_oracle_migration` memory note — re-verify before acting.
 
 ## Why migrate
 

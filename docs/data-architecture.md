@@ -422,6 +422,15 @@ specific node properties. Provenance convention: **agent writes carry
   language; `validate_cypher()` blocks any write keyword (MERGE/CREATE/DELETE/SET);
   executes read-only.
 
+### ChatAgent (query-time, not batch)
+- **Reads** the biological graph through 4 read-only tools (search / subgraph /
+  shortest-path / validator-gated `run_cypher`) — never writes topology.
+- **Writes** only its own **operational** memory nodes:
+  `(:ChatSession {id, created_at, updated_at})-[:HAS_TURN]->(:ChatTurn {role, content,
+  seq, ts})`. These are conversational-memory records, **not biological topology** — they
+  carry no `source_agent`/`source_db` provenance and are excluded from the graph model /
+  traversal. Only user + assistant *text* turns are stored (tool calls are ephemeral).
+
 ---
 
 ## 11. Data Quality Notes & Known Issues
