@@ -185,11 +185,98 @@ traffic/CPU periodically so Oracle doesn't flag the box idle.
 ( crontab -l 2>/dev/null; echo "0 4 * * 0 cd ~/Project_OMNI && bash scripts/dump_graph.sh" ) | crontab -
 ```
 
-**Updating the app later:**
+---
+
+## Phase 8 — Operating (monitor · update · reinitialize)
+
+Day-2 operations. Shorthand used below: `DC = docker compose -f
+docker-compose.prod.yml --env-file deploy/.env.prod` (the `--env-file` is required on
+*every* subcommand — see Troubleshooting). `PW=$(grep -E '^NEO4J_PASSWORD='
+deploy/.env.prod | cut -d= -f2-)` reads the DB password from your env file.
+
+### Monitor the enrichment crawls / ETL
+
+The **topology is already 100% loaded** (622,813 nodes / 2,042,539 edges from the
+dump). The host crawls (`16_gnomad_af`, `06_uniprot_enrich`) don't add nodes/edges —
+they **set properties** on existing nodes. "Progress" = coverage climbing:
 ```bash
-cd ~/Project_OMNI && git pull
-docker compose -f docker-compose.prod.yml --env-file deploy/.env.prod up -d --build
+tail -f ~/gnomad.log ~/uniprot.log        # live crawl output
+pgrep -af 'etl/16_gnomad_af|etl/06_uniprot'   # still running?
+
+# coverage climbing in the graph (re-run periodically — the counts go up):
+docker exec omnigraph-neo4j cypher-shell -u neo4j -p "$PW" \
+  "MATCH (v:Variant) RETURN count(v.gnomad_af) AS variants_with_af;
+   MATCH (p:Protein) RETURN count(p.summary_text) AS proteins_with_summary,
+                            count(p.embedding)    AS proteins_with_embedding;"
 ```
+If a crawl dies (e.g. box reboot), just re-launch it — both are `IS NULL`-guarded and
+resume where they left off (re-export `NEO4J_URI`/`NEO4J_PASSWORD` first, per Phase 7).
+
+### Update the deployment: **code** changes (the common case — test local → push)
+
+Your laptop is where you develop; the cloud is the source of truth for **data**. For a
+code/config change, ship the code and leave the graph alone:
+```bash
+# on your laptop: commit + push your tested branch
+git push origin feat/roadmap-enrichment-and-chatbot
+
+# on the VM: pull + rebuild. The named neo4j volume is NOT touched by a rebuild, so
+# your graph + all enrichment survive. deploy/.env.prod is gitignored -> survives pull.
+cd ~/Project_OMNI && git pull
+DC up -d --build
+```
+A rebuild only replaces the backend/web images. The graph lives in the `neo4j_data`
+named volume and persists across `up`/`down`/`--build`. Only `down -v` or an explicit
+`docker volume rm` deletes it.
+
+### Update the deployment: **graph** changes (rarer — and it CLOBBERS)
+
+⚠️ The cloud graph is ahead of your laptop's — the crawls run **on the cloud**, so it
+accumulates enrichment your local copy doesn't have. Pushing a local dump up
+**overwrites** that. Only do this if you rebuilt the *topology* locally (new data
+source / schema) and accept re-running the Phase 7 crawls afterward.
+```bash
+# laptop: rebuild/enrich locally, then dump + upload
+bash scripts/dump_graph.sh
+scp dumps/neo4j.dump ubuntu@<VM_IP>:~/Project_OMNI/dumps/
+# VM: load it (stops neo4j ~30s, overwrites, restarts)
+cd ~/Project_OMNI && bash scripts/restore_graph.sh
+```
+**Safer direction — pull the cloud graph *down* to your laptop** (to develop against
+the latest enriched data, or as an extra backup):
+```bash
+ssh ubuntu@<VM_IP> 'cd ~/Project_OMNI && bash scripts/dump_graph.sh'
+scp ubuntu@<VM_IP>:~/Project_OMNI/dumps/neo4j.dump ./dumps/
+bash scripts/restore_graph.sh            # loads it into your LOCAL neo4j
+```
+
+### Reinitialize
+
+**Same VM, reload the graph from scratch** (keep the box, wipe just the DB):
+```bash
+cd ~/Project_OMNI
+DC down                         # stop containers (volumes kept)
+docker volume rm project_omni_neo4j_data
+DC up -d neo4j && bash scripts/restore_graph.sh
+DC up -d --build
+```
+**Same VM, nuke everything** (containers + all volumes incl. Caddy certs): `DC down -v`,
+then redo Phase 6 (secrets already set) → restore → up.
+
+**Brand-new VM** (box was reclaimed / you want a clean host): start over at **Phase 1**.
+Every step is idempotent; the only inputs you need are your SSH key, the `neo4j.dump`,
+and your `deploy/.env.prod` secrets.
+
+### Cron (set in Phase 7 — manage them here)
+
+The **keep-alive** (every 30 min, avoids 7-day idle reclamation) and **weekly backup**
+crons are added in Phase 7. To review or edit:
+```bash
+crontab -l          # list active cron jobs
+crontab -e          # edit (add/remove lines)
+```
+If the box is ever reclaimed despite the keep-alive, upgrade to Pay-As-You-Go (stays
+$0 within Always-Free limits and is exempt from idle reclamation).
 
 ---
 
