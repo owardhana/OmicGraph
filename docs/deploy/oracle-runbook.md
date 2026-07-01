@@ -153,6 +153,7 @@ crawls only need `neo4j httpx python-dotenv` — no pandas/scipy). Use `nohup` s
 survive your SSH session:
 ```bash
 cd ~/Project_OMNI
+sudo apt-get install -y python3-venv    # Ubuntu minimal ships without ensurepip -> venv fails
 python3 -m venv etl/.venv && etl/.venv/bin/pip install -q neo4j httpx python-dotenv
 # point ETL at the host-local Neo4j + your password
 export NEO4J_URI=bolt://localhost:7687 NEO4J_PASSWORD=<your NEO4J_PASSWORD>
