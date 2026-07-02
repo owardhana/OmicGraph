@@ -5,7 +5,16 @@ These lock the closed-world entity-linking behaviour the rest of the pipeline
 depends on (alias resolution, longest-match, casing/ambiguity gates).
 """
 
+from backend.agents.extraction_agent import _candidate_pairs, _resolve_entities
 from backend.extraction.dictionary import Entry, Gazetteer
+from backend.extraction.ingest import split_sentences
+from backend.extraction.relation import (
+    RelationVerdict,
+    _orient,
+    _parse,
+    edge_type_for,
+)
+from backend.extraction.stage import triple_key
 
 _ENTRIES = [
     Entry("TP53", "ENSG00000141510", "gene", "TP53"),
@@ -93,10 +102,6 @@ def test_co_mention_gate_precondition():
 
 # --- pipeline helpers (ingest / relation / stage) — pure, offline ------------
 
-from backend.extraction.ingest import split_sentences
-from backend.extraction.relation import RelationVerdict, edge_type_for, _orient, _parse
-from backend.extraction.stage import triple_key
-
 
 def test_split_sentences_and_abbreviation():
     text = "TP53 binds MDM2. It is a regulator, e.g. in stress. EGFR was elevated."
@@ -147,8 +152,6 @@ def test_triple_key_symmetric_and_directed():
 
 
 # --- orchestration pairing (extraction_agent) — pure, offline -----------------
-
-from backend.agents.extraction_agent import _candidate_pairs, _resolve_entities
 
 
 class _M:  # minimal stand-in for a dictionary.Match (only .candidates is used)

@@ -170,6 +170,12 @@ def _map_genes_to_uniprot(ensembl_ids: set[str]) -> dict[str, str]:
 
 # --- HMDB streaming enrichment ----------------------------------------------
 
+def _elem_text(elem, tag: str) -> str | None:
+    """Stripped text of a child <tag> under an HMDB metabolite element, or None."""
+    e = elem.find(_HMDB_NS + tag)
+    return e.text.strip() if e is not None and e.text else None
+
+
 def _stream_hmdb(needed_ids: set[int]) -> dict[int, dict]:
     """{int hmdb id -> {name, formula, inchikey}} for the needed ids only, by
     streaming the (multi-GB) HMDB XML with iterparse + root.clear() (bounded mem)."""
@@ -200,11 +206,9 @@ def _stream_hmdb(needed_ids: set[int]) -> dict[int, dict]:
                             ids.add(n)
                 hit = ids & needed_ids
                 if hit:
-                    def _txt(tag):
-                        e = elem.find(_HMDB_NS + tag)
-                        return e.text.strip() if e is not None and e.text else None
-                    rec = {"name": _txt("name"), "formula": _txt("chemical_formula"),
-                           "inchikey": _txt("inchikey")}
+                    rec = {"name": _elem_text(elem, "name"),
+                           "formula": _elem_text(elem, "chemical_formula"),
+                           "inchikey": _elem_text(elem, "inchikey")}
                     for n in hit:
                         out[n] = rec
                 elem.clear()

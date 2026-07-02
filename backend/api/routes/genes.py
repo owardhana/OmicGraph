@@ -54,7 +54,7 @@ async def get_gene_graph(
             ensembl_id, tissue, decay=decay, min_signal=min_signal, max_nodes=max_nodes
         )
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     return models.graph_response_from_raw(raw, settings.tissues)
 
 

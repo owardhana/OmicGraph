@@ -31,7 +31,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
-# Surface forms shorter than this are only matched case-sensitively (see _case_ok).
+# Surface forms shorter than this are only matched case-sensitively (see _passes_gate).
 MIN_CASE_INSENSITIVE_LEN = 5
 
 # Tiny hard stoplist of symbols that are also frequent English/lab words — matched
@@ -107,7 +107,7 @@ class Gazetteer:
         out: list[Match] = []
         i = 0
         while i < len(tokens):
-            hit = self._longest_at(text, tokens, i)
+            hit = self._longest_at(tokens, i)
             if hit is None:
                 i += 1
                 continue
@@ -115,7 +115,7 @@ class Gazetteer:
             i = hit.end
         return out
 
-    def _longest_at(self, text: str, tokens: list[tuple[str, int, int]], i: int) -> Match | None:
+    def _longest_at(self, tokens: list[tuple[str, int, int]], i: int) -> Match | None:
         # Try the longest n-gram first so "type 2 diabetes" wins over "diabetes".
         upper = min(self._max_ngram, len(tokens) - i)
         for n in range(upper, 0, -1):
