@@ -11,12 +11,13 @@ Each agent has a defined scope, trigger, and hard constraints.
 MVP agents (built)
 ├── CitationAgent    — PubMed PMID enrichment, nightly
 ├── EmbeddingAgent   — semantic-search embeddings (cron opt-in, default off; run on demand)
-└── ChatAgent        — agentic tool-loop over the graph, streaming, per-request
-                       (the query surface; replaced the single-shot Text2Cypher endpoint)
+├── ChatAgent        — agentic tool-loop over the graph, streaming, per-request
+│                      (the query surface; replaced the single-shot Text2Cypher endpoint)
+└── ExtractionAgent  — literature -> CandidateEdge proposals (Feature 2 P1 scaffold;
+                       OFF by default, admin-gated; staging only, promotion is P2)
 
 v2 agents (post-demo)
-├── LiteratureAgent  — PubMed new-edge proposals (design locked — ADR-0013)
-├── ValidationAgent  — scores + gates proposed edges (promotion, P2)
+├── ValidationAgent  — promotion gate: scores + promotes CandidateEdges (Feature 2 P2)
 └── FreshnessAgent   — monitors source DB versions, triggers ETL
 ```
 
@@ -111,46 +112,44 @@ ephemeral (re-run on demand), never persisted. Operational nodes, never biologic
 
 ---
 
-## v2 Agents (define now, build later)
+### 3. ExtractionAgent
 
-### 3. LiteratureAgent
+**Role:** Read PubMed and **propose** node↔node relationships as `CandidateEdge`
+staging nodes — the first agent to propose topology. Closed-world (links only to
+existing graph nodes), abstracts only, MVP edge types `INTERACTS_WITH` + `IMPLICATED_IN`.
 
-**Role:** Monitor new publications (bioRxiv, PubMed) for biologically relevant relationships. Propose new edges as candidates — does NOT write to graph directly.
+**Trigger:** Manual, **gated** — `POST /admin/agents/extraction/run` returns
+`disabled` unless `EXTRACTION_AGENT_ENABLED=true` (spends NCBI + LLM). No cron.
 
-**Trigger:** Weekly cron. Processes papers published in last 7 days matching configured MeSH terms.
+**Flow:** build gazetteer from graph → PubMed reldate delta (E-utils) → per sentence
+with ≥2 distinct linked entities → cheap LLM verdict per in-vocab pair (polarity:
+affirm/negate/hedge) → `stage_verdict`: enrich existing trusted edge, else upsert a
+`CandidateEdge` (+`CandidateEvidence` per PMID; confidence = independent-PMID agreement).
 
-**Flow:**
-```
-fetch new papers (bioRxiv API + PubMed E-utilities)
-  → filter by relevance (title/abstract keyword match)
-  → for each paper:
-      → extract entity pairs (gene/TF/transcript mentions via NER)
-      → classify relationship type (regulatory / binding / expression)
-      → score confidence (model certainty + journal impact proxy)
-      → write to EdgeCandidates queue (Neo4j or Postgres)
-  → notify admin of queue size
-```
+**Constraints (ADR-0013):** NEVER writes trusted topology. Candidates are operational
+labels with endpoint ids as **string properties** (not relationships) → invisible to
+traversal/search/counts. Promoted edges (P2) will carry `provenance_tier='literature'`.
 
-**Output:** `EdgeCandidate` nodes in graph with status `pending_review`.
-Never writes `REGULATES` or `PRODUCES` edges directly.
-
-**Constraints:**
-- All candidates go to validation queue — no direct graph writes
-- Must store: source PMID, extracted sentence, entity pair, relationship type, confidence score
-- Confidence threshold for queue entry: >0.7 (discard lower)
-- Human review required before promotion to graph (ValidationAgent handles automated tier)
-
-**Tools:** bioRxiv API, PubMed E-utilities, Claude API (NER + classification), Neo4j driver
-
-**Files:** `backend/agents/literature_agent.py`
+**Files:** `backend/agents/extraction_agent.py`, `backend/extraction/{dictionary,ingest,relation,stage}.py`,
+`backend/llm/prompts/extraction.py`. Design: `docs/design/feature-2-literature-extraction.md`.
 
 ---
 
-### 4. ValidationAgent
+## v2 Agents (define now, build later)
 
-**Role:** Score EdgeCandidates from LiteratureAgent. Auto-promote high-confidence candidates. Flag borderline for human review.
+> **LiteratureAgent is BUILT** as the **ExtractionAgent** (MVP §3 above, Feature 2 P1).
+> Its original sketch here is superseded by [ADR-0013](docs/adr/0013-literature-extraction-trust-model.md):
+> staging label is `CandidateEdge`/`CandidateEvidence` (not `EdgeCandidate`), and
+> promoted edges carry `provenance_tier='literature'` (not `source:agent_extracted`).
+> What remains for v2 is the **promotion gate** below.
 
-**Trigger:** After each LiteratureAgent run. Also per-candidate via admin UI.
+### ValidationAgent (Feature 2 P2 — promotion gate)
+
+**Role:** Score `CandidateEdge`s from the ExtractionAgent. Auto-promote high-confidence
+candidates (with ≥N independent PMIDs), flag borderline for human review. On promote,
+mint the real typed edge tagged `provenance_tier='literature'` (ADR-0013).
+
+**Trigger:** After each ExtractionAgent run. Also per-candidate via admin UI.
 
 **Flow:**
 ```
@@ -243,11 +242,13 @@ Graph = shared state / message bus. No inter-agent HTTP calls.
 ## Admin endpoints (FastAPI)
 
 ```
-POST /admin/agents/citation/run       → trigger CitationAgent manually
-POST /admin/agents/embedding/run      → trigger EmbeddingAgent manually (one batch)
-GET  /admin/agents/citation/log       → last N CitationRun nodes
-GET  /admin/candidates                → EdgeCandidates pending review (v2)
-POST /admin/candidates/{id}/approve   → human approve EdgeCandidate (v2)
-POST /admin/candidates/{id}/reject    → human reject EdgeCandidate (v2)
-GET  /admin/freshness                 → FreshnessAlert nodes (v2)
+POST /admin/agents/citation/run           → trigger CitationAgent manually
+POST /admin/agents/embedding/run          → trigger EmbeddingAgent manually (one batch)
+GET  /admin/agents/{citation,embedding}/log → last N run-log nodes
+POST /admin/agents/extraction/run         → trigger ExtractionAgent (gated: EXTRACTION_AGENT_ENABLED)
+GET  /admin/agents/extraction/candidates  → pending CandidateEdges ≥ confidence floor
+GET  /admin/agents/extraction/log         → last N ExtractionRun nodes
+POST /admin/candidates/{id}/approve       → promote CandidateEdge (ValidationAgent, P2)
+POST /admin/candidates/{id}/reject        → reject CandidateEdge (P2)
+GET  /admin/freshness                     → FreshnessAlert nodes (v2)
 ```

@@ -132,3 +132,37 @@ def test_triple_key_symmetric_and_directed():
     # IMPLICATED_IN is directed -> order preserved.
     assert triple_key(_verdict("IMPLICATED_IN", "G1", "D1", "gene", "disease")) \
         != triple_key(_verdict("IMPLICATED_IN", "D1", "G1", "disease", "gene"))
+
+
+# --- orchestration pairing (extraction_agent) — pure, offline -----------------
+
+from backend.agents.extraction_agent import _candidate_pairs, _resolve_entities
+
+
+class _M:  # minimal stand-in for a dictionary.Match (only .candidates is used)
+    def __init__(self, entry):
+        self.candidates = [entry]
+
+
+def test_resolve_entities_dedupes_by_node_id():
+    tp53_gene = Entry("TP53", "ENSG1", "gene", "TP53")
+    tp53_again = Entry("p53", "ENSG1", "gene", "TP53")  # same node_id
+    egfr = Entry("EGFR", "ENSG2", "gene", "EGFR")
+    ents = _resolve_entities([_M(tp53_gene), _M(tp53_again), _M(egfr)])
+    assert {e.node_id for e in ents} == {"ENSG1", "ENSG2"}
+
+
+def test_candidate_pairs_filters_selfpairs_and_out_of_vocab():
+    prot_a = Entry("A", "P1", "protein", "A")
+    prot_b = Entry("B", "P2", "protein", "B")
+    gene = Entry("G", "ENSG1", "gene", "G")
+    disease = Entry("D", "EFO1", "disease", "D")
+    # protein-protein -> 1 pair; gene-disease -> 1 pair; gene-protein/protein-disease
+    # /gene-gene -> none (out of MVP vocab). No self-pairs.
+    pairs = _candidate_pairs([prot_a, prot_b, gene, disease])
+    kinds = {frozenset({a.kind, b.kind}) for a, b in pairs}
+    assert frozenset({"protein"}) in kinds          # INTERACTS_WITH
+    assert frozenset({"gene", "disease"}) in kinds   # IMPLICATED_IN
+    assert all(a.node_id != b.node_id for a, b in pairs)
+    # gene+protein is not a valid pair -> excluded
+    assert frozenset({"gene", "protein"}) not in kinds

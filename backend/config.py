@@ -93,6 +93,9 @@ class Settings(BaseSettings):
     EMBEDDING_AGENT_CRON_ENABLED: bool = False
 
     # --- Literature extraction (Feature 2, P1) — all tunable, never hardcode ---
+    # Master switch. OFF by default: the extractor spends on NCBI E-utils + the LLM,
+    # so the admin trigger refuses unless this is true. Nothing runs unattended.
+    EXTRACTION_AGENT_ENABLED: bool = False
     # Cheap deterministic model for the per-sentence relation verdict (haiku by default).
     EXTRACTION_MODEL: str = "anthropic/claude-haiku-4.5"
     PUBMED_DELTA_TERM: str = "humans[MeSH Terms]"  # broad biomedical delta scope
