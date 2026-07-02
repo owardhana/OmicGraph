@@ -143,41 +143,28 @@ traversal/search/counts. Promoted edges (P2) will carry `provenance_tier='litera
 > promoted edges carry `provenance_tier='literature'` (not `source:agent_extracted`).
 > What remains for v2 is the **promotion gate** below.
 
-### ValidationAgent (Feature 2 P2 — promotion gate)
+### ValidationAgent (Feature 2 P2 — promotion gate) — BUILT (mechanism)
 
-**Role:** Score `CandidateEdge`s from the ExtractionAgent. Auto-promote high-confidence
-candidates (with ≥N independent PMIDs), flag borderline for human review. On promote,
-mint the real typed edge tagged `provenance_tier='literature'` (ADR-0013).
+**Role:** Promote a `CandidateEdge` into a REAL typed edge tagged
+`provenance_tier='literature'` + `source_db='literature_extracted'` + supporting
+`pmids` — the only path that writes trusted topology. Re-checks `trusted_edge_exists`
+at promote time (canonical edge appeared since staging → enrich, don't duplicate).
+Idempotent MERGE. `reject` keeps the candidate flagged, never re-proposed.
 
-**Trigger:** After each ExtractionAgent run. Also per-candidate via admin UI.
+**Trigger:** Manual `POST /admin/candidates/{triple_key}/{approve,reject}` (the safe
+path). An auto-promote pass (`POST /admin/agents/validation/run`) exists but is
+**default-OFF** (`VALIDATION_AUTO_PROMOTE_ENABLED`) — auto-promote is **uncalibrated**
+until the precision harness (`RUN_EXTRACTION_EVAL`) produces a number. All writes gated
+on the feature master switch `EXTRACTION_AGENT_ENABLED`.
 
-**Flow:**
-```
-fetch EdgeCandidates with status=pending_review
-  → for each candidate:
-      → check: does relationship already exist in graph? (dedup)
-      → check: do source entities exist as nodes? (entity resolution)
-      → cross-reference: does DoRothEA / ENCODE corroborate? (+score)
-      → cross-reference: does any existing PMID on edge overlap? (+score)
-      → compute final score (0-1)
-      → score ≥ 0.85 → auto-promote to graph (source: agent_extracted)
-      → score 0.60-0.84 → flag for human review in admin UI
-      → score < 0.60 → discard, log reason
-```
-
-**Output:** Edges promoted to graph tagged `source: "agent_extracted"`, `review_status: "auto_approved"`.
-
-**Constraints:**
-- Auto-promoted edges must carry: PMID, extracted sentence, agent confidence score, source model version
-- Human-reviewed edges tagged `review_status: "human_approved"`
-- Disputed edges tagged `review_status: "rejected"` — kept in log, never deleted
-- All agent-extracted edges visually distinct in UI (different edge style)
-
-**Files:** `backend/agents/validation_agent.py`
+**Files:** `backend/agents/validation_agent.py`. Auto-promote policy: confidence ≥
+`VALIDATION_AUTO_PROMOTE_CONFIDENCE` AND `n_affirm` ≥ `VALIDATION_MIN_INDEPENDENT_PMIDS`
+AND no contradicting evidence. Promoted edges carry the supporting `pmids` and are
+rendered distinctly in the UI ("proposed", literature tier).
 
 ---
 
-### 5. FreshnessAgent
+### FreshnessAgent (v2 — not built)
 
 **Role:** Monitor upstream data sources for new versions. Alert when source DB version changes.
 

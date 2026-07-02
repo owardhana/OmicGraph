@@ -78,6 +78,13 @@ edges influence signal-decay less than consortium edges. This keeps `INTERACTS_W
 `_conductance` at all — but the rule is fixed now so promotion can't bake in an
 undefined weight later.*
 
+**Implemented (P2, 2026-07-02):** `_conductance` applies the discount via
+`LITERATURE_CONDUCTANCE_FACTOR`; the `ValidationAgent`
+(`backend/agents/validation_agent.py`) promotes candidates to real edges carrying the
+tier. The promotion **mechanism** is built but **auto-promote is default-OFF**
+(`VALIDATION_AUTO_PROMOTE_ENABLED`) — uncalibrated until the precision harness
+(`RUN_EXTRACTION_EVAL`) yields a number; the safe path is manual approve/reject.
+
 ### 5. Enrichment is additive and never reclassifies
 
 When a paper supports an **existing trusted** edge, the PMID is appended to that edge's

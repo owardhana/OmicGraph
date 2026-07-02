@@ -104,6 +104,18 @@ class Settings(BaseSettings):
     EXTRACTION_CONFIDENCE_FLOOR: float = 0.5  # candidates below this are not surfaced
     EXTRACTION_EFETCH_BATCH: int = 100  # PMIDs per efetch call
 
+    # --- Feature 2 P2 — promotion + provenance-tier discount (ADR-0013) ---
+    # Promoted literature edges conduct less signal than canonical ones (a
+    # single-sentence claim < consortium data). Applied multiplicatively in traversal.
+    LITERATURE_CONDUCTANCE_FACTOR: float = 0.5
+    # Auto-promote is UNCALIBRATED until the precision harness (RUN_EXTRACTION_EVAL)
+    # produces a number — default OFF; use manual approve/reject. When on, a candidate
+    # promotes iff confidence >= threshold AND >= N independent affirming PMIDs AND no
+    # contradicting evidence.
+    VALIDATION_AUTO_PROMOTE_ENABLED: bool = False
+    VALIDATION_AUTO_PROMOTE_CONFIDENCE: float = 0.75
+    VALIDATION_MIN_INDEPENDENT_PMIDS: int = 2
+
     @property
     def tissues(self) -> list[str]:
         """Tissue keys, e.g. ['whole_blood', 'liver', 'brain_prefrontal_cortex']."""

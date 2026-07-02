@@ -8,6 +8,7 @@ from fastapi import APIRouter
 from backend.agents.citation_agent import citation_agent
 from backend.agents.embedding_agent import embedding_agent
 from backend.agents.extraction_agent import extraction_agent
+from backend.agents.validation_agent import validation_agent
 from backend.config import settings
 
 logger = logging.getLogger(__name__)
@@ -107,3 +108,51 @@ async def extraction_candidates(limit: int = 50):
 async def extraction_agent_log():
     """Return the last 10 ExtractionRun log entries."""
     return await extraction_agent.recent_runs(limit=10)
+
+
+# --- ValidationAgent: promotion gate (Feature 2 P2, ADR-0013) ---------------
+# All writes are gated on the feature master switch. Auto-promote is *further* gated
+# inside the agent by VALIDATION_AUTO_PROMOTE_ENABLED (uncalibrated -> default off).
+
+@router.post("/agents/validation/run")
+async def run_validation_agent():
+    """Run the auto-promote pass. Gated on EXTRACTION_AGENT_ENABLED; a no-op unless
+    VALIDATION_AUTO_PROMOTE_ENABLED is also true (promotion writes trusted topology)."""
+    if not settings.EXTRACTION_AGENT_ENABLED:
+        return {"status": "disabled",
+                "detail": "set EXTRACTION_AGENT_ENABLED=true to run validation"}
+
+    async def _runner():
+        try:
+            await validation_agent.run()
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("ValidationAgent background run failed: %s", exc)
+
+    task = asyncio.create_task(_runner())
+    _background_tasks.add(task)
+    task.add_done_callback(_background_tasks.discard)
+    return {"status": "started"}
+
+
+@router.post("/candidates/{triple_key}/approve")
+async def approve_candidate(triple_key: str):
+    """Manually promote a pending candidate to a trusted (literature-tier) edge."""
+    if not settings.EXTRACTION_AGENT_ENABLED:
+        return {"status": "disabled",
+                "detail": "set EXTRACTION_AGENT_ENABLED=true to promote candidates"}
+    return await validation_agent.approve(triple_key)
+
+
+@router.post("/candidates/{triple_key}/reject")
+async def reject_candidate(triple_key: str):
+    """Reject a candidate (kept + flagged, never re-proposed)."""
+    if not settings.EXTRACTION_AGENT_ENABLED:
+        return {"status": "disabled",
+                "detail": "set EXTRACTION_AGENT_ENABLED=true to reject candidates"}
+    return await validation_agent.reject(triple_key)
+
+
+@router.get("/agents/validation/log")
+async def validation_agent_log():
+    """Return the last 10 ValidationRun log entries."""
+    return await validation_agent.recent_runs(limit=10)
