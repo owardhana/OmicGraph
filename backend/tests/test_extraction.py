@@ -77,3 +77,58 @@ def test_co_mention_gate_precondition():
     hits = _gaz().match("p53 regulates EGFR")
     ids = {m.candidates[0].node_id for m in hits}
     assert len(ids) >= 2
+
+
+# --- pipeline helpers (ingest / relation / stage) — pure, offline ------------
+
+from backend.extraction.ingest import split_sentences
+from backend.extraction.relation import RelationVerdict, edge_type_for, _orient, _parse
+from backend.extraction.stage import triple_key
+
+
+def test_split_sentences_and_abbreviation():
+    text = "TP53 binds MDM2. It is a regulator, e.g. in stress. EGFR was elevated."
+    sents = split_sentences(text)
+    assert sents[0] == "TP53 binds MDM2."
+    # "e.g." must not split its sentence into two.
+    assert any("e.g. in stress" in s for s in sents)
+    assert sents[-1] == "EGFR was elevated."
+
+
+def test_edge_type_for_kinds():
+    assert edge_type_for("protein", "protein") == "INTERACTS_WITH"
+    assert edge_type_for("gene", "disease") == "IMPLICATED_IN"
+    assert edge_type_for("disease", "gene") == "IMPLICATED_IN"
+    assert edge_type_for("gene", "gene") is None          # out of MVP vocab
+    assert edge_type_for("protein", "disease") is None
+
+
+def test_orient_implicated_in_pins_gene_to_disease():
+    gene = Entry("TP53", "ENSG1", "gene", "TP53")
+    dis = Entry("cancer", "EFO1", "disease", "breast cancer")
+    s, o = _orient("IMPLICATED_IN", dis, gene)  # pass reversed
+    assert s.kind == "gene" and o.kind == "disease"
+
+
+def test_parse_verdict_ok_and_bad():
+    ok = _parse('{"asserted": true, "polarity": "affirm", "confidence": 1.4, "evidence_span": "binds"}')
+    assert ok["asserted"] and ok["polarity"] == "affirm"
+    assert ok["confidence"] == 1.0                         # clamped to [0,1]
+    neg = _parse('noise {"asserted": true, "polarity": "negate", "confidence": 0.8} tail')
+    assert neg["polarity"] == "negate"
+    assert _parse("not json") is None
+    assert _parse('{"asserted": true, "polarity": "maybe"}') is None  # bad polarity
+
+
+def _verdict(edge_type, sid, oid, skind, okind):
+    return RelationVerdict(edge_type, sid, skind, oid, okind, True, "affirm", 0.9, "x", "1", "s")
+
+
+def test_triple_key_symmetric_and_directed():
+    # INTERACTS_WITH is symmetric -> A-B == B-A.
+    ab = triple_key(_verdict("INTERACTS_WITH", "P1", "P2", "protein", "protein"))
+    ba = triple_key(_verdict("INTERACTS_WITH", "P2", "P1", "protein", "protein"))
+    assert ab == ba
+    # IMPLICATED_IN is directed -> order preserved.
+    assert triple_key(_verdict("IMPLICATED_IN", "G1", "D1", "gene", "disease")) \
+        != triple_key(_verdict("IMPLICATED_IN", "D1", "G1", "disease", "gene"))

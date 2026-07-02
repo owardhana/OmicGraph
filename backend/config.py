@@ -92,6 +92,15 @@ class Settings(BaseSettings):
     # semantic_search chat tool queries whatever vectors already exist regardless.
     EMBEDDING_AGENT_CRON_ENABLED: bool = False
 
+    # --- Literature extraction (Feature 2, P1) — all tunable, never hardcode ---
+    # Cheap deterministic model for the per-sentence relation verdict (haiku by default).
+    EXTRACTION_MODEL: str = "anthropic/claude-haiku-4.5"
+    PUBMED_DELTA_TERM: str = "humans[MeSH Terms]"  # broad biomedical delta scope
+    PUBMED_DELTA_DAYS: int = 1        # esearch reldate window (nightly = 1)
+    PUBMED_DELTA_RETMAX: int = 200    # max PMIDs per delta run (scaffold cap)
+    EXTRACTION_CONFIDENCE_FLOOR: float = 0.5  # candidates below this are not surfaced
+    EXTRACTION_EFETCH_BATCH: int = 100  # PMIDs per efetch call
+
     @property
     def tissues(self) -> list[str]:
         """Tissue keys, e.g. ['whole_blood', 'liver', 'brain_prefrontal_cortex']."""
