@@ -87,6 +87,10 @@ class Settings(BaseSettings):
     GWAS_MIN_SIGNIFICANCE: float = 5e-8  # GWAS p-value cutoff (genome-wide significance)
     EMBEDDING_AGENT_BATCH_SIZE: int = 50  # nodes per embedding agent run
     EMBEDDING_AGENT_CRON_HOUR: int = 1  # 1am UTC (after citation agent at midnight)
+    # Nightly embedding crawl hits the OpenRouter embeddings API (costs $). Default
+    # OFF — populate on demand via POST /admin/agents/embedding/run instead. The
+    # semantic_search chat tool queries whatever vectors already exist regardless.
+    EMBEDDING_AGENT_CRON_ENABLED: bool = False
 
     @property
     def tissues(self) -> list[str]:

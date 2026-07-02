@@ -37,12 +37,16 @@ async def lifespan(app: FastAPI):
         id="citation_nightly",
         replace_existing=True,
     )
-    scheduler.add_job(
-        embedding_agent.run,
-        CronTrigger(hour=settings.EMBEDDING_AGENT_CRON_HOUR),
-        id="embedding_nightly",
-        replace_existing=True,
-    )
+    # Embedding crawl spends on the OpenRouter API, so its nightly cron is opt-in
+    # (EMBEDDING_AGENT_CRON_ENABLED, default off). Populate on demand via
+    # POST /admin/agents/embedding/run; the semantic_search tool reads existing vectors.
+    if settings.EMBEDDING_AGENT_CRON_ENABLED:
+        scheduler.add_job(
+            embedding_agent.run,
+            CronTrigger(hour=settings.EMBEDDING_AGENT_CRON_HOUR),
+            id="embedding_nightly",
+            replace_existing=True,
+        )
     scheduler.start()
     yield
     scheduler.shutdown(wait=False)

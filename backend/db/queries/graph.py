@@ -22,6 +22,47 @@ def _build_lucene_query(raw: str) -> str | None:
     return " ".join(f"({token}^4 OR {token}*)" for token in cleaned.split())
 
 
+# Vector index (ADR-0008) per embeddable label -> (index name, canonical id field).
+# Only Gene/Protein/Disease carry embeddings (Transcript/Variant/Metabolite have no
+# meaningful free text). Keys double as the allowlist for the `kinds` filter.
+_VECTOR_INDEXES = {
+    "gene": ("gene_embeddings", "ensembl_id"),
+    "protein": ("protein_embeddings", "uniprot_id"),
+    "disease": ("disease_embeddings", "ontology_id"),
+}
+
+
+async def semantic_search_nodes(
+    vector: list[float], kinds: list[str] | None = None, k: int = 5
+) -> list[dict]:
+    """Vector-similarity search over embedded Gene/Protein/Disease nodes (ADR-0008).
+
+    Queries each requested label's native vector index via
+    ``db.index.vector.queryNodes`` and returns the top-``k`` merged hits by cosine
+    score. Returns [] (never errors) when embeddings aren't populated yet — the
+    index exists but has no vectors, so queryNodes simply yields nothing.
+    """
+    wanted = [x for x in (kinds or list(_VECTOR_INDEXES)) if x in _VECTOR_INDEXES]
+    results: list[dict] = []
+    async with get_session() as session:
+        for kind in wanted:
+            index_name, id_field = _VECTOR_INDEXES[kind]
+            cypher = f"""
+            CALL db.index.vector.queryNodes($index, $k, $vec) YIELD node, score
+            RETURN '{kind}' AS node_type,
+                   node.{id_field} AS id,
+                   coalesce(node.hgnc_symbol, node.name) AS display_name,
+                   left(coalesce(node.summary_text, node.description, ''), 240) AS snippet,
+                   score
+            """
+            rows = await (
+                await session.run(cypher, index=index_name, k=k, vec=vector)
+            ).data()
+            results.extend(rows)
+    results.sort(key=lambda r: r["score"], reverse=True)
+    return results[:k]
+
+
 async def search_nodes(query: str, limit: int = 10) -> list[dict]:
     """Full-text search across Gene, Transcript, Protein, Disease (node_search).
 

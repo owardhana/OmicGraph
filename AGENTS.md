@@ -10,7 +10,7 @@ Each agent has a defined scope, trigger, and hard constraints.
 ```
 MVP agents (built)
 ├── CitationAgent    — PubMed PMID enrichment, nightly
-├── EmbeddingAgent   — semantic-search embeddings, nightly (1am UTC)
+├── EmbeddingAgent   — semantic-search embeddings (cron opt-in, default off; run on demand)
 └── ChatAgent        — agentic tool-loop over the graph, streaming, per-request
                        (the query surface; replaced the single-shot Text2Cypher endpoint)
 
@@ -81,17 +81,19 @@ Text2Cypher endpoint).
 **Flow:**
 ```
 load prior turns (conversational memory) → [system, ...history, user]
-  → stream an LLM turn (OpenRouter, SYNTHESIS_MODEL) advertising 4 read-only tools
+  → stream an LLM turn (OpenRouter, SYNTHESIS_MODEL) advertising 5 read-only tools
   → if it requested tools: run them, append results, loop (max 6 iterations)
   → else: the streamed text is the final answer
   → forced final no-tools turn if the tool budget is exhausted
   → persist the user + assistant turns
 ```
 
-**Tools (all READ-ONLY, no write path):** `search_graph` (resolve name→id),
-`get_subgraph` (signal-decay neighbourhood), `shortest_path` (explain how two entities
-connect), `run_cypher` (read-only aggregations — routed through `validate_cypher`, a
-single-MATCH read-only guard).
+**Tools (all READ-ONLY, no write path):** `search_graph` (resolve name→id, full-text),
+`semantic_search` (find entities by meaning — embeds the query, then vector-searches
+Gene/Protein/Disease; ADR-0008 — the query-time consumer of the EmbeddingAgent's
+vectors), `get_subgraph` (signal-decay neighbourhood), `shortest_path` (explain how two
+entities connect), `run_cypher` (read-only aggregations — routed through
+`validate_cypher`, a single-MATCH read-only guard).
 
 **Memory:** prior user/assistant *text* turns stored in Neo4j as
 `(:ChatSession {id})-[:HAS_TURN]->(:ChatTurn {role, content, seq, ts})`. Tool calls are

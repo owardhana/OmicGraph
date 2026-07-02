@@ -362,6 +362,11 @@ Created at backend startup via `create_indexes()` in
 | `disease_embedding_idx` | Vector (cosine, 1536) | `Disease.embedding` | Semantic disease search |
 
 Vector indexes use Neo4j native `db.index.vector` ([ADR-0008](adr/0008-neo4j-native-vector-indexing.md)).
+The **query-time consumer** is the ChatAgent's `semantic_search` tool (embeds the live
+query, then `db.index.vector.queryNodes` over these three indexes). The EmbeddingAgent
+*populates* the vectors; its nightly cron is **opt-in** (`EMBEDDING_AGENT_CRON_ENABLED`,
+default off — it spends on the embeddings API), so backfill runs on demand via
+`POST /admin/agents/embedding/run`.
 The fulltext index is dropped and recreated when Metabolite is added (label lists
 are immutable under `CREATE FULLTEXT ... IF NOT EXISTS`).
 
