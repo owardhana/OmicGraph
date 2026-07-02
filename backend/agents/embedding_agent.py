@@ -27,7 +27,7 @@ _ID_FIELD = {"Gene": "ensembl_id", "Protein": "uniprot_id", "Disease": "ontology
 # Gene/Protein embed their UniProt/NCBI summary_text; Disease embeds its trait
 # description (Transcript/Variant carry no meaningful free text — not embedded).
 _FETCH_UNEMBEDDED = """
-CALL {
+CALL () {
   MATCH (n:Gene)
   WHERE n.summary_text IS NOT NULL AND n.embedding IS NULL
   RETURN 'Gene' AS label, n.ensembl_id AS id, n.summary_text AS text

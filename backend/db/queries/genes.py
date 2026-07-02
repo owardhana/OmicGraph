@@ -84,21 +84,18 @@ async def get_gene_neighborhood(
 _GENE_CANCER = """
 MATCH (g:Gene {hgnc_symbol: $symbol})-[seed:DIFFERENTIALLY_EXPRESSED]->(d:Disease)
 WITH DISTINCT d, seed.tumor_type AS tumor_type
-CALL {
-  WITH d, tumor_type
+CALL (d, tumor_type) {
   MATCH (:Gene)-[r:DIFFERENTIALLY_EXPRESSED {tumor_type: tumor_type}]->(d)
   RETURN sum(CASE WHEN r.direction = 'up' THEN 1 ELSE 0 END) AS up_count,
          sum(CASE WHEN r.direction = 'down' THEN 1 ELSE 0 END) AS down_count
 }
-CALL {
-  WITH d, tumor_type
+CALL (d, tumor_type) {
   MATCH (og:Gene)-[r:DIFFERENTIALLY_EXPRESSED {tumor_type: tumor_type}]->(d)
   WHERE r.direction = 'up'
   WITH og, r ORDER BY r.log2fc DESC LIMIT 5
   RETURN collect(og.hgnc_symbol) AS top_up_genes
 }
-CALL {
-  WITH d, tumor_type
+CALL (d, tumor_type) {
   MATCH (og:Gene)-[r:DIFFERENTIALLY_EXPRESSED {tumor_type: tumor_type}]->(d)
   WHERE r.direction = 'down'
   WITH og, r ORDER BY r.log2fc ASC LIMIT 5
