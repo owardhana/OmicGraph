@@ -1,9 +1,10 @@
 # Design — Literature Extraction Agent (Feature 2)
 
-Status: **P1 + P2 BUILT (2026-07-02), OFF by default. P3 remaining.** A grill-with-docs
-session (2026-07-01) locked 9 decisions; P1 (extraction→staging) and P2 (promotion +
-tier discount + "proposed" rendering) were then built on branch
-`feat/literature-extraction-mvp`. The whole feature is gated OFF
+Status: **P1 + P2 BUILT (2026-07-02) + P3 admin review dashboard BUILT (2026-07-03), OFF
+by default. Rest of P3 remaining.** A grill-with-docs session (2026-07-01) locked 9
+decisions; P1 (extraction→staging) and P2 (promotion + tier discount + "proposed"
+rendering) were then built on branch `feat/literature-extraction-mvp`, followed by the
+admin review dashboard (ADR-0014). The whole feature is gated OFF
 (`EXTRACTION_AGENT_ENABLED=false`) — nothing spends or writes without opting in. Trust
 model: [ADR-0013](../adr/0013-literature-extraction-trust-model.md). See **Phasing** for
 what's built vs. remaining (P3).
@@ -174,16 +175,177 @@ CPU (llama.cpp, ARM) actually matter. See [cloud-migration.md](cloud-migration.m
    - **Backfill:** throttled historical pull (millions of papers). This is the expensive
      tier — add the cheap-screen→strong-confirm two-tier + possibly a quantized local
      model on the host CPU (llama.cpp, ARM). Nightly stays near-free.
-   - **More edge types:** `CATALYSES` (protein→metabolite), `REGULATES` (needs a "which
-     entity is the TF" sub-check — the graph already knows the TF subtype),
-     `ASSOCIATED_WITH` (needs rsid mentions, sparse in abstracts). Each is a new
-     `edge_type_for` kind-pair + relation-desc + `_KIND_MAP`/direction entry.
+   - **More edge types (scope: 5 of 9, not all).** The extractor targets edges that are
+     *claims a paper asserts*, never facts we already compute authoritatively. MVP does 2
+     (`INTERACTS_WITH`, `IMPLICATED_IN`); the fast-follows are `CATALYSES`
+     (protein→metabolite), `REGULATES` (needs a "which entity is the TF" sub-check — the
+     graph already knows the TF subtype), and `ASSOCIATED_WITH` (needs rsid mentions,
+     sparse in abstracts) → **5 extractable total.** Each is a new `edge_type_for`
+     kind-pair + relation-desc + `_KIND_MAP`/direction entry.
+
+     The other **4 are deliberately NOT extraction targets** — structural/derived facts
+     with an authoritative structured source, where reading them from prose only adds
+     hallucination surface for no gain: `IN_GENE` (variant→gene, a genomic coordinate),
+     `TRANSLATES_TO`/`ENCODES` (transcript→protein, GENCODE/HGNC annotation), `PRODUCES`
+     (gene→transcript, annotation), `DIFFERENTIALLY_EXPRESSED` (gene→tumour, TCGA
+     quantitative log2FC + cohort — a paper's "upregulated in X" is a weaker qualitative
+     restatement of what we already have). This is a scope decision, not a backlog gap.
    - **Host + cron:** move the nightly run onto the Oracle box with a real scheduler
      (currently manual/local). See [cloud-migration.md](cloud-migration.md).
-   - **Admin review UI:** a surface over `GET /admin/agents/extraction/candidates` for
-     human approve/reject at scale (endpoints exist; no UI yet).
+   - **Admin review dashboard — ✅ BUILT (2026-07-03).** The human-in-the-loop promotion
+     surface (auto-promote is uncalibrated + OFF, so manual review is the only safe
+     promotion path). Two-pane queue at `#/admin`, `ADMIN_TOKEN`-gated; approve/reject/
+     revert with exact-delta revert. Full spec + build notes below (**Admin Review
+     Dashboard**); trust decisions in
+     [ADR-0014](../adr/0014-literature-review-dashboard.md).
    - **Expand the disease-generic gate** to be data-driven (single-token `Disease.name`
      audit) rather than the hardcoded `GENERIC_TERMS` floor.
+
+## Admin Review Dashboard (P3)
+
+The human-in-the-loop promotion surface. **BUILT 2026-07-03** (grill-with-docs +
+implementation); trust decisions in [ADR-0014](../adr/0014-literature-review-dashboard.md).
+Access is gated by a single `ADMIN_TOKEN` header + the existing `EXTRACTION_AGENT_ENABLED`
+master gate on every write route (Caddy basic-auth in front on the Oracle host). Reached at
+`#/admin` in the frontend. The two cross-nav conveniences (a "Load endpoints in viewer"
+button and an `EdgeDetailPanel`→admin deep-link) are **deferred** — the minted edge now
+carries `r.triple_key` so the deep-link is trivial to add later without unused UI now.
+
+### Using the dashboard (operator guide)
+
+1. **Enable + open.** Set `EXTRACTION_AGENT_ENABLED=true` (writes are gated on it) and, on
+   any shared host, `ADMIN_TOKEN=<secret>`. Open **`/#/admin`** (locally
+   `http://localhost:3000/#/admin`). If a token is set, paste it once when prompted — it is
+   stored in `localStorage` and sent as `X-Admin-Token`.
+2. **Pick a tab.** **Pending** is the work queue (sortable by confidence, affirming-paper
+   count, or recency — and it is *not* confidence-gated, so low-confidence proposals are
+   visible). **Promoted** and **Rejected** are the audit trail.
+3. **Open a candidate** (left list → detail pane). Read the evidence before deciding — there
+   is no action on the list rows by design. The detail pane shows:
+   - the proposed edge (`SUBJECT ↔/→ OBJECT rel_type`) and a **would-it-MINT-or-ENRICH**
+     badge — MINT = a brand-new literature-tier edge; ENRICH = appends citations to an
+     existing canonical edge (advisory; re-checked at click time);
+   - **evidence**, one row per PMID (PubMed link, polarity, cited sentence, model +
+     confidence) with **contradicting papers surfaced first**;
+   - **endpoint context** (each node's degree + summary) and **agent profiling**.
+4. **Act** (detail pane, each confirms first):
+   - **Approve** → promotes: MINT a new `provenance_tier='literature'` edge (renders as
+     "proposed" in the graph) or ENRICH the canonical edge. Bypasses the auto-promote
+     threshold (manual = deliberate).
+   - **Reject** → flags the candidate (kept, never re-proposed). *Terminal — no in-UI
+     un-reject* (see Known limitations).
+   - **Revert** (promoted candidates) → undoes the promotion: deletes the minted edge, or
+     strips exactly the PMIDs it added (canonical citations preserved), and returns the
+     candidate to Pending.
+5. **Try it with demo data:** `scripts/seed_demo_candidates.py` seeds a mix across all three
+   tabs; `--clear` removes it (see **Playground data** below).
+
+### Reviewer workflow
+
+Three verbs only — **approve · reject · revert** — no edit-before-approve (the reviewer
+*gates* biology, never *authors* it; ADR-0014 §1). Actions live **only in the detail pane**:
+you must open a candidate and see its evidence before deciding (no blind approve from the
+list). Status tabs: **pending** (default, the work) · **promoted** · **rejected** (audit).
+
+```
+open candidate → read evidence + agent profiling → approve | reject
+   approve → _promote_one: MINT new literature-tier edge, or ENRICH existing canonical edge
+   reject  → status='rejected' (kept + flagged, never re-proposed, never deleted)
+   revert  → undo a promotion (see ADR-0014 §2 — exact-delta, fully reversible)
+```
+
+### New backend endpoints
+
+| Endpoint | Purpose |
+|----------|---------|
+| `GET /admin/candidates?status=pending\|promoted\|rejected&sort=confidence\|n_affirm` | Review queue. **Not confidence-gated** (ADR-0014 §4 — unlike `list_candidates`); confidence is a sortable column. Returns per-row summary + evidence counts. |
+| `GET /admin/candidates/{triple_key}` | **Detail payload** (below) — resolved endpoints, evidence chain, `would_be_action`, agent profiling. |
+| `POST /admin/candidates/{triple_key}/approve` | Reused (exists). Promote/enrich. |
+| `POST /admin/candidates/{triple_key}/reject` | Reused (exists). |
+| `POST /admin/candidates/{triple_key}/revert` | **New.** Undo a promotion (ADR-0014 §2). |
+
+### Detail payload — `GET /admin/candidates/{triple_key}`
+
+```
+proposed_change:
+  rel_type, symmetric?, direction
+  subject: {id, kind, name}      ← RESOLVED: look up ENSG/UniProt/EFO → "TP53"/"breast cancer"
+  object:  {id, kind, name}         (ids are stored as raw string props, not relationships)
+  would_be_action: "MINT" | "ENRICH"   ← ADVISORY preview via trusted_edge_exists;
+                                          _promote_one re-checks at click time (authoritative)
+scoring:
+  confidence, n_affirm, n_negate, status, first_seen, last_seen
+evidence[]:                        ← the :SUPPORTS chain, one row per PMID
+  {pmid (→ pubmed link), sentence_span (model's cited span, surfaces highlighted),
+   polarity, model_conf, model, extracted_at}
+  · negate rows surfaced prominently (contradicting papers shown, not just counted)
+endpoint_context:                  ← helps judge the entity
+  subject/object: {existing degree, summary_text snippet}
+agent_profiling:
+  source_agent, agent_version, run_timestamp, model slug, originating ExtractionRun
+```
+
+### Revert semantics (ADR-0014 §2 — exact-delta, no canonical corruption)
+
+Promotion records the exact set it changed so revert can undo either branch cleanly:
+
+- **ENRICH** — promotion writes `ce.enriched_pmids = [x IN affirming WHERE NOT x IN existing]`
+  (the precise delta appended). Revert removes exactly that set from the canonical edge's
+  `pmids[]`, clears `lit_enriched` iff no literature PMIDs remain, resets candidate →
+  `pending`. Canonical `source_db` + pre-existing citations untouched.
+- **MINT** — revert deletes the promoted edge **iff `provenance_tier='literature'`** (guard:
+  can never delete a canonical edge), resets candidate → `pending`.
+
+### Frontend
+
+`/admin` route in the existing React app (ADMIN_TOKEN-gated, hidden without it). **Two-pane
+review queue:** left = status-tabbed list (confidence-sortable); right = detail pane (payload
+above + action buttons). Reuse the viewer instead of a bespoke mini-graph: a **"Load
+endpoints in viewer"** button seeds the 3D graph via `POST /api/graph/multi`; conversely,
+clicking a literature-tier edge's `EdgeDetailPanel` "⚠ Proposed" badge deep-links to that
+candidate in `/admin`. Optional cheap keyboard nav (`j`/`k`/`Enter`); **no** approve/reject
+hotkeys (deliberate clicks only).
+
+### Prerequisite stage.py patch
+
+`stage.py` currently persists `polarity`, `model_conf`, `sentence_span` per
+`:CandidateEvidence`. Add `model` (slug) + `extracted_at` (design-doc schema already promises
+them) so the profiling panel can report which model/version proposed each piece of evidence.
+
+### Playground data (dev)
+
+[`scripts/seed_demo_candidates.py`](../../scripts/seed_demo_candidates.py) seeds a spread of
+**mock** candidates (pending/promoted/rejected, both edge types, sub-floor→high confidence,
+some with contradicting evidence) referencing real nodes so names resolve. Every mock row is
+tagged `mock: true`; teardown is one command and also removes any literature edge a mock was
+promoted into (matched by `r.triple_key`), so it never leaves residue:
+
+```
+PYTHONPATH=. python scripts/seed_demo_candidates.py          # create
+PYTHONPATH=. python scripts/seed_demo_candidates.py --clear  # remove ALL mocks
+```
+
+### Known limitations (dashboard)
+
+- **Reject is terminal — no in-UI un-reject.** `revert` is defined for *promotions* only
+  (ADR-0014 §2); a rejected candidate is flagged and never re-proposed, but a mis-clicked
+  Reject has no dashboard recovery (it can only be un-rejected by editing `ce.status` in
+  Cypher). Accepted for MVP (reject confirms before acting; un-reject is out of the locked
+  scope). Revisit if it bites in real use.
+- **Deployment:** the prod Caddy config must reverse-proxy `/admin/*` to the backend (added
+  to [`deploy/Caddyfile`](../../deploy/Caddyfile)); without it the dashboard's same-origin
+  `/admin` calls fall through to the SPA and 404. Wrap that block in `basic_auth` for a
+  second layer on a public host (ADR-0014 §3).
+
+### Build order
+
+1. `stage.py` evidence-field patch (`model`, `extracted_at`) — smallest, unblocks profiling.
+2. `_promote_one` ENRICH branch records `ce.enriched_pmids`; add `ValidationAgent.revert`.
+3. Backend: `GET /admin/candidates?status=`, `GET /admin/candidates/{tk}`,
+   `POST …/revert`. Endpoint-id→name resolution reuses the existing entity queries.
+4. Frontend `/admin` two-pane queue + EdgeDetailPanel deep-link.
+5. Tests: revert round-trip (MINT delete-guard + ENRICH exact-delta, assert canonical
+   `pmids` uncorrupted); detail-payload resolution; list not confidence-gated.
 
 ### Known limitation to revisit when the feature is enabled
 

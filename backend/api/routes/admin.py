@@ -3,17 +3,27 @@
 import asyncio
 import logging
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends, Header, HTTPException
 
 from backend.agents.citation_agent import citation_agent
 from backend.agents.embedding_agent import embedding_agent
 from backend.agents.extraction_agent import extraction_agent
 from backend.agents.validation_agent import validation_agent
 from backend.config import settings
+from backend.db.neo4j_client import get_session
+from backend.extraction import review
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/admin", tags=["admin"])
+
+async def _require_admin(x_admin_token: str | None = Header(default=None)) -> None:
+    """Gate the whole /admin router on ADMIN_TOKEN (ADR-0014 §3). Empty token = open
+    (local single-user dev); set it on any shared/public host."""
+    if settings.ADMIN_TOKEN and x_admin_token != settings.ADMIN_TOKEN:
+        raise HTTPException(status_code=401, detail="invalid or missing X-Admin-Token")
+
+
+router = APIRouter(prefix="/admin", tags=["admin"], dependencies=[Depends(_require_admin)])
 
 # Strong references to in-flight background tasks. asyncio only keeps weak refs,
 # so without this a detached task can be garbage-collected mid-run.
@@ -132,6 +142,37 @@ async def run_validation_agent():
     _background_tasks.add(task)
     task.add_done_callback(_background_tasks.discard)
     return {"status": "started"}
+
+
+@router.get("/candidates")
+async def review_candidates(status: str = "pending", sort: str = "confidence",
+                            limit: int = 100):
+    """Review queue for one status tab (pending|promoted|rejected). Unlike
+    /agents/extraction/candidates this is NOT confidence-gated (ADR-0014 §4) — the
+    sub-floor candidates are the whole reason manual review exists."""
+    async with get_session() as session:
+        return await review.list_for_review(session, status=status, sort=sort, limit=limit)
+
+
+@router.get("/candidates/{triple_key}")
+async def review_candidate_detail(triple_key: str):
+    """Full review payload: resolved endpoints, evidence chain, would_be_action, agent
+    profiling (ADR-0014 detail shape)."""
+    async with get_session() as session:
+        detail = await review.candidate_detail(session, triple_key)
+    if detail is None:
+        raise HTTPException(status_code=404, detail="candidate not found")
+    return detail
+
+
+@router.post("/candidates/{triple_key}/revert")
+async def revert_candidate(triple_key: str):
+    """Undo a promotion (ADR-0014 §2) — delete a minted literature edge, or strip the
+    exact enrichment delta; the candidate returns to the pending queue."""
+    if not settings.EXTRACTION_AGENT_ENABLED:
+        return {"status": "disabled",
+                "detail": "set EXTRACTION_AGENT_ENABLED=true to revert promotions"}
+    return await validation_agent.revert(triple_key)
 
 
 @router.post("/candidates/{triple_key}/approve")

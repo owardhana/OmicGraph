@@ -116,6 +116,12 @@ class Settings(BaseSettings):
     VALIDATION_AUTO_PROMOTE_CONFIDENCE: float = 0.75
     VALIDATION_MIN_INDEPENDENT_PMIDS: int = 2
 
+    # --- Feature 2 P3 — admin review dashboard (ADR-0014) ---
+    # Gates the /admin router. Empty (default) = open, for local single-user dev; set a
+    # non-empty secret on any shared/public host (the frontend sends it as X-Admin-Token,
+    # and Caddy basic-auth sits in front as a second layer).
+    ADMIN_TOKEN: str = ""
+
     @property
     def tissues(self) -> list[str]:
         """Tissue keys, e.g. ['whole_blood', 'liver', 'brain_prefrontal_cortex']."""

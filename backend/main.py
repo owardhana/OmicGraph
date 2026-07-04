@@ -8,6 +8,7 @@ Run locally:
     PYTHONPATH=. uvicorn backend.main:app --reload
 """
 
+import logging
 from contextlib import asynccontextmanager
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -31,6 +32,14 @@ scheduler = AsyncIOScheduler()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await create_indexes()
+    # The /admin router promotes trusted topology; on a host where the extractor is
+    # live it must not be left open. Warn loudly if the ADMIN_TOKEN gate is unset
+    # (Caddy basic-auth alone is easy to forget) — see ADR-0014 §3.
+    if settings.EXTRACTION_AGENT_ENABLED and not settings.ADMIN_TOKEN:
+        logging.getLogger(__name__).warning(
+            "EXTRACTION_AGENT_ENABLED but ADMIN_TOKEN is empty — /admin write routes are "
+            "UNGATED at the app layer. Set ADMIN_TOKEN on any shared/public host."
+        )
     scheduler.add_job(
         citation_agent.run,
         CronTrigger(hour=settings.CITATION_AGENT_CRON_HOUR),

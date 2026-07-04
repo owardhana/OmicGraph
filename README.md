@@ -104,7 +104,8 @@ proteins) · [0005](docs/adr/0005-signal-decay-traversal.md) (signal-decay trave
 [0010](docs/adr/0010-full-proteome.md) (full proteome) ·
 [0011](docs/adr/0011-backbone-guaranteed-traversal.md) (backbone-guaranteed traversal) ·
 [0012](docs/adr/0012-metabolite-bridge-connectivity.md) (metabolite bridge — opt-in) ·
-[0013](docs/adr/0013-literature-extraction-trust-model.md) (literature-extraction trust model).
+[0013](docs/adr/0013-literature-extraction-trust-model.md) (literature-extraction trust model) ·
+[0014](docs/adr/0014-literature-review-dashboard.md) (literature review dashboard — human-gate).
 
 ---
 

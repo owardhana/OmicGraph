@@ -1,6 +1,8 @@
 // Typed fetch wrappers for the OmniGraph backend.
 
 import type {
+  CandidateDetail,
+  CandidateSummary,
   EntitySearchResponse,
   GeneNode,
   GraphResponse,
@@ -155,3 +157,52 @@ export const api = {
 };
 
 export const DEFAULT_GENE = (import.meta.env.VITE_DEFAULT_GENE as string) || 'TP53';
+
+// --- Admin review dashboard (Feature 2 P3, ADR-0014) ---------------------------
+// The /admin router is gated by an ADMIN_TOKEN (sent as X-Admin-Token). Stored in
+// localStorage so it survives reloads; empty is fine for local dev (token unset).
+const ADMIN_TOKEN_KEY = 'omnigraph_admin_token';
+
+export const getAdminToken = (): string => localStorage.getItem(ADMIN_TOKEN_KEY) ?? '';
+export const setAdminToken = (t: string): void => localStorage.setItem(ADMIN_TOKEN_KEY, t);
+
+export class AdminAuthError extends Error {
+  constructor() {
+    super('Admin token missing or invalid');
+    this.name = 'AdminAuthError';
+  }
+}
+
+function adminHeaders(): Record<string, string> {
+  const t = getAdminToken();
+  return t ? { 'X-Admin-Token': t } : {};
+}
+
+async function adminFetch<T>(path: string, method: 'GET' | 'POST'): Promise<T> {
+  const res = await fetch(`${BASE_URL}${path}`, { method, headers: adminHeaders() });
+  if (res.status === 401) throw new AdminAuthError();
+  if (!res.ok) throw new Error(`${method} ${path} failed: ${res.status}`);
+  return res.json() as Promise<T>;
+}
+
+export interface ActionResult {
+  status: string;
+  triple_key?: string;
+  note?: string;
+  kind?: string;
+}
+
+const candidatePath = (tk: string) => `/admin/candidates/${encodeURIComponent(tk)}`;
+
+export const adminApi = {
+  listCandidates: (status: string, sort: string) =>
+    adminFetch<CandidateSummary[]>(
+      `/admin/candidates?status=${status}&sort=${sort}`,
+      'GET',
+    ),
+  candidateDetail: (tk: string) =>
+    adminFetch<CandidateDetail>(candidatePath(tk), 'GET'),
+  approve: (tk: string) => adminFetch<ActionResult>(`${candidatePath(tk)}/approve`, 'POST'),
+  reject: (tk: string) => adminFetch<ActionResult>(`${candidatePath(tk)}/reject`, 'POST'),
+  revert: (tk: string) => adminFetch<ActionResult>(`${candidatePath(tk)}/revert`, 'POST'),
+};

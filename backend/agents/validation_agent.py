@@ -23,21 +23,11 @@ from backend.extraction.stage import (
     _ALLOWED_EDGES,
     _KIND_MAP,
     _SYMMETRIC,
+    endpoints_view,
     trusted_edge_exists,
 )
 
 logger = logging.getLogger(__name__)
-
-
-class _Endpoints:
-    """Minimal shim exposing the attrs trusted_edge_exists reads off a verdict."""
-
-    def __init__(self, ce: dict):
-        self.edge_type = ce["rel_type"]
-        self.subject_id = ce["subject_id"]
-        self.subject_kind = ce["subject_kind"]
-        self.object_id = ce["object_id"]
-        self.object_kind = ce["object_kind"]
 
 
 class ValidationAgent(BaseAgent):
@@ -61,7 +51,7 @@ class ValidationAgent(BaseAgent):
         if ce.get("subject_kind") not in _KIND_MAP or ce.get("object_kind") not in _KIND_MAP:
             return "skipped"
 
-        ep = _Endpoints(ce)
+        ep = endpoints_view(ce)
         pmids = await self._affirming_pmids(session, ce["triple_key"])
         s_label, s_idf = _KIND_MAP[ce["subject_kind"]]
         o_label, o_idf = _KIND_MAP[ce["object_kind"]]
@@ -73,31 +63,36 @@ class ValidationAgent(BaseAgent):
         }
 
         if await trusted_edge_exists(session, ep):
-            # canonical edge appeared since staging -> enrich it, don't mint a duplicate.
+            # Canonical edge appeared since staging -> enrich it, don't mint a duplicate.
+            # Record the EXACT delta appended (ce.enriched_pmids) so revert removes only
+            # what we added and never strips a citation the canonical edge already had
+            # (ADR-0014 §2). Delta is computed in the same statement to avoid drift.
             query = (
                 f"MATCH (s:{s_label} {{{s_idf}: $sid}})-[r:{ce['rel_type']}]{arrow}"
                 f"(o:{o_label} {{{o_idf}: $oid}}) "
-                "SET r.pmids = coalesce(r.pmids, []) + "
-                "    [x IN $pmids WHERE NOT x IN coalesce(r.pmids, [])], r.lit_enriched = true "
-                "WITH r LIMIT 1 "
+                "WITH r, [x IN $pmids WHERE NOT x IN coalesce(r.pmids, [])] AS delta LIMIT 1 "
+                "SET r.pmids = coalesce(r.pmids, []) + delta, r.lit_enriched = true "
+                "WITH r, delta "
                 "MATCH (ce:CandidateEdge {triple_key: $tk}) "
-                "SET ce.status = 'promoted', ce.promoted_at = $run_timestamp "
+                "SET ce.status = 'promoted', ce.promoted_at = $run_timestamp, "
+                "    ce.promotion_kind = 'enrich', ce.enriched_pmids = delta "
                 "RETURN count(r) AS n"
             )
             rows = await (await session.run(query, **params)).data()
             return "enriched" if rows and rows[0]["n"] else "skipped"
 
-        # Mint the real typed edge, permanently tiered 'literature'.
+        # Mint the real typed edge, permanently tiered 'literature'. `r.triple_key` links
+        # the edge back to the candidate that produced it (provenance + future deep-link).
         query = (
             f"MATCH (s:{s_label} {{{s_idf}: $sid}}), (o:{o_label} {{{o_idf}: $oid}}) "
             f"MERGE (s)-[r:{ce['rel_type']}]{arrow}(o) "
             "SET r.provenance_tier = 'literature', r.source_db = 'literature_extracted', "
-            "    r.pmids = $pmids, r.confidence = $confidence, "
+            "    r.pmids = $pmids, r.confidence = $confidence, r.triple_key = $tk, "
             "    r.source_agent = $source_agent, r.agent_version = $agent_version, "
             "    r.run_timestamp = $run_timestamp "
             "WITH r "
             "MATCH (ce:CandidateEdge {triple_key: $tk}) "
-            "SET ce.status = 'promoted', ce.promoted_at = $run_timestamp "
+            "SET ce.status = 'promoted', ce.promoted_at = $run_timestamp, ce.promotion_kind = 'mint' "
             "RETURN count(r) AS n"
         )
         rows = await (await session.run(query, **params)).data()
@@ -166,6 +161,57 @@ class ValidationAgent(BaseAgent):
             ).data()
         found = bool(rows and rows[0]["n"])
         return {"status": "rejected" if found else "not_found", "triple_key": triple_key}
+
+    async def revert(self, triple_key: str) -> dict:
+        """Undo a promotion (ADR-0014 §2) — the one safety net for a mis-clicked approve.
+
+        - MINT  -> delete the promoted edge, guarded on `provenance_tier='literature'` so
+          a canonical edge can never be deleted.
+        - ENRICH -> remove exactly `ce.enriched_pmids` from the canonical edge's `pmids`
+          (the recorded delta; canonical citations survive) and clear `lit_enriched`.
+
+        The candidate is always reset to `pending` (even if the edge match finds nothing),
+        so a reverted proposal returns cleanly to the review queue.
+        """
+        async with get_session() as session:
+            ce = await self._fetch_candidate(session, triple_key)
+            if ce is None:
+                return {"status": "not_found", "triple_key": triple_key}
+            if ce.get("status") != "promoted":
+                return {"status": ce.get("status"), "triple_key": triple_key,
+                        "note": "not promoted"}
+
+            kind = ce.get("promotion_kind")
+            s_kind, o_kind = ce.get("subject_kind"), ce.get("object_kind")
+            if s_kind in _KIND_MAP and o_kind in _KIND_MAP:
+                s_label, s_idf = _KIND_MAP[s_kind]
+                o_label, o_idf = _KIND_MAP[o_kind]
+                arrow = "-" if ce.get("rel_type") in _SYMMETRIC else "->"
+                params = {"sid": ce["subject_id"], "oid": ce["object_id"],
+                          "delta": ce.get("enriched_pmids") or []}
+                if kind == "mint":
+                    await session.run(
+                        f"MATCH (s:{s_label} {{{s_idf}: $sid}})"
+                        f"-[r:{ce['rel_type']} {{provenance_tier: 'literature'}}]{arrow}"
+                        f"(o:{o_label} {{{o_idf}: $oid}}) DELETE r",
+                        **params,
+                    )
+                elif kind == "enrich":
+                    await session.run(
+                        f"MATCH (s:{s_label} {{{s_idf}: $sid}})-[r:{ce['rel_type']}]{arrow}"
+                        f"(o:{o_label} {{{o_idf}: $oid}}) WITH r LIMIT 1 "
+                        "SET r.pmids = [x IN coalesce(r.pmids, []) WHERE NOT x IN $delta], "
+                        "    r.lit_enriched = null",
+                        **params,
+                    )
+
+            await session.run(
+                "MATCH (ce:CandidateEdge {triple_key: $tk}) "
+                "SET ce.status = 'pending', ce.promoted_at = null, "
+                "    ce.promotion_kind = null, ce.enriched_pmids = null",
+                tk=triple_key,
+            )
+        return {"status": "reverted", "triple_key": triple_key, "kind": kind}
 
     async def recent_runs(self, limit: int = 10) -> list[dict]:
         query = """

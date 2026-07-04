@@ -19,6 +19,7 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timezone
 
+from backend.config import settings
 from backend.extraction.relation import RelationVerdict
 
 logger = logging.getLogger(__name__)
@@ -32,6 +33,25 @@ _KIND_MAP = {
 _SYMMETRIC = {"INTERACTS_WITH"}
 # Edge types the extractor may stage (allowlist for Cypher interpolation).
 _ALLOWED_EDGES = {"INTERACTS_WITH", "IMPLICATED_IN"}
+
+
+class _EndpointsView:
+    """Adapts a CandidateEdge property dict to the attrs `trusted_edge_exists` reads
+    off a verdict (`rel_type` -> `edge_type`). Shared by the ValidationAgent (promote)
+    and the review surface (would_be_action preview) so both go through one code path."""
+
+    __slots__ = ("edge_type", "subject_id", "subject_kind", "object_id", "object_kind")
+
+    def __init__(self, ce: dict):
+        self.edge_type = ce.get("rel_type")
+        self.subject_id = ce.get("subject_id")
+        self.subject_kind = ce.get("subject_kind")
+        self.object_id = ce.get("object_id")
+        self.object_kind = ce.get("object_kind")
+
+
+def endpoints_view(ce: dict) -> _EndpointsView:
+    return _EndpointsView(ce)
 
 
 def triple_key(v: RelationVerdict) -> str:
@@ -93,6 +113,7 @@ MERGE (ev:CandidateEvidence {triple_key: $tk, pmid: $pmid})
 SET ev.polarity = $polarity,
     ev.model_conf = $confidence,
     ev.sentence_span = $evidence_span,
+    ev.model = $model,
     ev.extracted_at = $now
 MERGE (ev)-[:SUPPORTS]->(ce)
 WITH ce
@@ -130,6 +151,7 @@ async def stage_verdict(session, v: RelationVerdict, provenance: dict) -> dict:
         "oid": v.object_id, "okind": v.object_kind,
         "pmid": v.pmid, "polarity": v.polarity,
         "confidence": v.confidence, "evidence_span": v.evidence_span,
+        "model": settings.EXTRACTION_MODEL,
         "now": _now(),
         "source_agent": provenance.get("source_agent"),
         "agent_version": provenance.get("agent_version"),

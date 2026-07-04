@@ -108,7 +108,9 @@ laptop contention, so the always-on box is their proper home. Both are resumable
   trust model: [ADR-0013](adr/0013-literature-extraction-trust-model.md).
   **Remaining (P3):** calibrate auto-promote (run `RUN_EXTRACTION_EVAL`), historical
   backfill + tiered models, more edge types (`CATALYSES`/`REGULATES`/`ASSOCIATED_WITH`),
-  Oracle host + cron, admin review UI.
+  Oracle host + cron. **Admin review dashboard BUILT (2026-07-03)** — human-gate
+  promotion surface at `#/admin` ([ADR-0014](adr/0014-literature-review-dashboard.md)):
+  two-pane queue, `ADMIN_TOKEN`-gated, approve/reject/revert with exact-delta revert.
 - **Horizontal metabolite reach-through for pure-TF seeds** — surfacing
   metabolites that belong to a TF's regulated genes. Explicitly rejected as the
   current floor (semantically muddier; ADR-0011 "Rejected alternatives"); the
