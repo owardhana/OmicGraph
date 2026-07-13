@@ -16,11 +16,33 @@ from backend.extraction import review
 logger = logging.getLogger(__name__)
 
 
+def _admin_denial(
+    token_configured: str, provided: str | None, fail_closed: bool
+) -> tuple[int, str] | None:
+    """Pure gate decision (ADR-0014 §3 + ADR-0017). Returns ``(status, detail)`` to deny,
+    or ``None`` to allow. Kept side-effect-free so it is unit-testable without the app.
+
+    - No token configured + ``fail_closed`` → **refuse** (503): a forgotten token on a
+      public host locks admin down instead of falling open.
+    - No token configured + not fail-closed → allow (local single-user dev convenience).
+    - Token configured → the request must present the matching ``X-Admin-Token``.
+    """
+    if not token_configured:
+        if fail_closed:
+            return (503, "admin disabled: ADMIN_TOKEN is not configured on this host")
+        return None
+    if provided != token_configured:
+        return (401, "invalid or missing X-Admin-Token")
+    return None
+
+
 async def _require_admin(x_admin_token: str | None = Header(default=None)) -> None:
-    """Gate the whole /admin router on ADMIN_TOKEN (ADR-0014 §3). Empty token = open
-    (local single-user dev); set it on any shared/public host."""
-    if settings.ADMIN_TOKEN and x_admin_token != settings.ADMIN_TOKEN:
-        raise HTTPException(status_code=401, detail="invalid or missing X-Admin-Token")
+    """Gate the whole /admin router. See :func:`_admin_denial` for the decision."""
+    denial = _admin_denial(
+        settings.ADMIN_TOKEN, x_admin_token, settings.ADMIN_FAIL_CLOSED
+    )
+    if denial is not None:
+        raise HTTPException(status_code=denial[0], detail=denial[1])
 
 
 router = APIRouter(prefix="/admin", tags=["admin"], dependencies=[Depends(_require_admin)])

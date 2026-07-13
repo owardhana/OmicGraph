@@ -46,6 +46,9 @@ services:
       - deploy/.env.prod
     environment:
       NEO4J_URI: bolt://neo4j:7687
+      # ADR-0017: public host fails closed — an unset ADMIN_TOKEN refuses /admin (503)
+      # rather than falling open. Override in deploy/.env.prod only to deliberately relax.
+      ADMIN_FAIL_CLOSED: "true"
     depends_on:
       neo4j:
         condition: service_healthy

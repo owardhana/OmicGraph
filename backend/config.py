@@ -121,6 +121,11 @@ class Settings(BaseSettings):
     # non-empty secret on any shared/public host (the frontend sends it as X-Admin-Token,
     # and Caddy basic-auth sits in front as a second layer).
     ADMIN_TOKEN: str = ""
+    # Fail-closed switch for public hosts (ADR-0017). When true, an empty ADMIN_TOKEN
+    # makes the /admin router REFUSE every request (503) instead of falling open —
+    # so a forgotten token on a public deploy locks admin down rather than exposing it.
+    # Default false preserves the local single-user dev convenience; set true in prod.
+    ADMIN_FAIL_CLOSED: bool = False
 
     @property
     def tissues(self) -> list[str]:
