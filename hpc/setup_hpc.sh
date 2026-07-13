@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# One-time HPC environment setup for OmniGraph.
+# One-time HPC environment setup for OmicGraph.
 # Run this once after cloning the repo onto HPC.
 # Safe to re-run — pip install and downloads are idempotent.
 #
@@ -21,7 +21,7 @@ PY_VERSION="$(python3 -c 'import sys; print(sys.version_info[:2])')"
 PY_MAJOR="$(python3 -c 'import sys; print(sys.version_info.major)')"
 PY_MINOR="$(python3 -c 'import sys; print(sys.version_info.minor)')"
 
-echo "=== OmniGraph HPC setup ==="
+echo "=== OmicGraph HPC setup ==="
 echo "  repo   : ${REPO}"
 echo "  python : $(python3 --version) at $(which python3)"
 

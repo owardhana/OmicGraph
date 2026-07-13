@@ -1,4 +1,4 @@
-# OmniGraph — Current State & Roadmap
+# OmicGraph — Current State & Roadmap
 
 Where the build is, what's loaded, and what's deferred. For the data model see
 [`data-architecture.md`](data-architecture.md); for product scope and design see
@@ -93,6 +93,17 @@ laptop contention, so the always-on box is their proper home. Both are resumable
   the nightly batch=50 agent; runbook Phase 7).
 - **gnomAD AF backfill** — `16_gnomad_af.py` populating `Variant.gnomad_af` over ~325k
   rs-variants (~11% at cutover; the long pole, ~1–1.5 days; ClinVar-significant first).
+
+## Next phase (planned) — OmicGraph
+
+Rename OmniGraph → **OmicGraph** + three enrichment sources (subcellular localization,
+pathway/GO annotations, DisGeNET curated gene-disease), a public MCP server + security
+hardening, and a frontend refinement (landing front-door, tabbed Entity Inspector,
+scientific visual pass). Full plan + sequencing:
+[`docs/design/next-phase-omicgraph.md`](design/next-phase-omicgraph.md). Decisions:
+[ADR-0015](adr/0015-enrichment-as-annotations.md) (enrichment as annotations),
+[ADR-0016](adr/0016-disgenet-curated-gene-disease.md) (DisGeNET),
+[ADR-0017](adr/0017-public-access-model.md) (public access model).
 
 ## Deferred / optional
 

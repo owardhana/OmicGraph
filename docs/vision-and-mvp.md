@@ -1,6 +1,6 @@
-# OmniGraph — Vision, Scope & Design
+# OmicGraph — Vision, Scope & Design
 
-Why OmniGraph exists, what it covers, and the durable product/design decisions
+Why OmicGraph exists, what it covers, and the durable product/design decisions
 behind it. The data model and provenance live in
 [`data-architecture.md`](data-architecture.md); current build state and future
 work live in [`roadmap.md`](roadmap.md); architectural rationale lives in
@@ -26,9 +26,9 @@ Biology is multi-layered but its data is siloed: GTEx knows tissue expression,
 ENCODE knows TF binding, STRING knows protein interactions, UniProt knows
 proteins, PubMed knows the literature. No single system integrates these into a
 traversable, cited, queryable graph. Researchers triangulate manually across many
-databases, browser tabs, and papers. OmniGraph collapses that into one interface.
+databases, browser tabs, and papers. OmicGraph collapses that into one interface.
 
-## Prior art (and why OmniGraph is different)
+## Prior art (and why OmicGraph is different)
 
 | System | What it does | Gap |
 |--------|-------------|-----|
@@ -38,7 +38,7 @@ databases, browser tabs, and papers. OmniGraph collapses that into one interface
 | OmniPath | Signalling network | No 3D viz, no RAG, no tissue-specific expression |
 | BioGRID | Genetic/protein interactions | No multi-omics |
 
-OmniGraph = unified layers + tissue context + 3D viz + LLM query + agent curation.
+OmicGraph = unified layers + tissue context + 3D viz + LLM query + agent curation.
 No single existing system has all five.
 
 ---
@@ -180,7 +180,7 @@ no_path, never a silent empty result.
 
 ## The agent layer
 
-OmniGraph cannot be fully curated manually. Two production roles plus one future:
+OmicGraph cannot be fully curated manually. Two production roles plus one future:
 - **Citation agent** (scheduled) — searches PubMed for literature supporting each
   existing edge; attaches PMIDs. Never creates edges.
 - **Embedding agent** (scheduled) — embeds node `summary_text`/`description` for

@@ -25,7 +25,7 @@ NEO4J_PASSWORD="${NEO4J_PASSWORD:-changeme}"
 HEAP_MAX="${NEO4J_HEAP_MAX:-8G}"
 PAGECACHE="${NEO4J_PAGECACHE:-8G}"
 
-echo "=== OmniGraph Neo4j tarball install ==="
+echo "=== OmicGraph Neo4j tarball install ==="
 echo "  Version    : ${NEO4J_VERSION}"
 echo "  Install dir: ${NEO4J_HOME}"
 echo "  Data dir   : ${NEO4J_DATA}"
@@ -93,7 +93,7 @@ sed -i '/^server\.http\.listen_address/d'              "${CONF}" 2>/dev/null || 
 
 cat >> "${CONF}" <<EOF
 
-# ── OmniGraph HPC settings (written by hpc/install_neo4j.sh) ──
+# ── OmicGraph HPC settings (written by hpc/install_neo4j.sh) ──
 server.directories.data=${NEO4J_DATA}
 server.memory.heap.max_size=${HEAP_MAX}
 server.memory.pagecache.size=${PAGECACHE}

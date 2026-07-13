@@ -211,7 +211,7 @@ export default function App() {
 
       <header className="topbar">
         <div className="topbar-left">
-          <div className="brand">OmniGraph</div>
+          <div className="brand">OmicGraph</div>
           <SearchBar onSelect={handleSelect} />
         </div>
         <LayerToggle visibleLayers={visibleLayers} onToggle={handleToggleLayer} />

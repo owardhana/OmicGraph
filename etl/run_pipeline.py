@@ -1,4 +1,4 @@
-"""etl/run_pipeline.py — DAG runner for the OmniGraph ETL pipeline.
+"""etl/run_pipeline.py — DAG runner for the OmicGraph ETL pipeline.
 
 Runs every ETL step in dependency order, importing each script's ``main()``
 directly (no subprocess) and logging the outcome to a ``(:DataSource)`` node in
@@ -86,7 +86,7 @@ def _log_datasource(step: str, status: str) -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="OmniGraph ETL pipeline runner")
+    parser = argparse.ArgumentParser(description="OmicGraph ETL pipeline runner")
     parser.add_argument(
         "--from", dest="from_step", default=None,
         help="resume from this step (e.g. 07_string)",

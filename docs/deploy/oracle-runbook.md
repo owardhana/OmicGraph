@@ -1,6 +1,6 @@
-# OmniGraph — Oracle Cloud deployment runbook (free tier)
+# OmicGraph — Oracle Cloud deployment runbook (free tier)
 
-A step-by-step guide to run OmniGraph 24/7 on one Oracle Cloud **Always-Free Ampere
+A step-by-step guide to run OmicGraph 24/7 on one Oracle Cloud **Always-Free Ampere
 A1** VM. Written for someone new to cloud. Architecture rationale lives in
 [`cloud-migration.md`](../design/cloud-migration.md); this is the hands-on version.
 
@@ -18,7 +18,7 @@ and Oracle deletes the instance if it's idle >7 days — Phase 7 adds a keep-ali
 You log into the VM with an SSH key, not a password. Make one if you don't have it:
 
 ```bash
-ls ~/.ssh/id_ed25519.pub 2>/dev/null || ssh-keygen -t ed25519 -C "omnigraph" -f ~/.ssh/id_ed25519 -N ""
+ls ~/.ssh/id_ed25519.pub 2>/dev/null || ssh-keygen -t ed25519 -C "omicgraph" -f ~/.ssh/id_ed25519 -N ""
 cat ~/.ssh/id_ed25519.pub    # copy this whole line — you'll paste it in Phase 2
 ```
 
@@ -27,7 +27,7 @@ cat ~/.ssh/id_ed25519.pub    # copy this whole line — you'll paste it in Phase
 ## Phase 2 — Create the VM (Oracle console)
 
 1. Sign in at <https://cloud.oracle.com> → hamburger menu → **Compute → Instances → Create instance**.
-2. **Name:** `omnigraph`.
+2. **Name:** `omicgraph`.
 3. **Image and shape → Edit → Change shape → Ampere** → pick **VM.Standard.A1.Flex**.
    Set **1 or 2 OCPUs** and **6–12 GB** memory (free tier allows up to 4/24 total, but
    free accounts are now capped at 2/12 — start with **2 OCPU / 12 GB**).
@@ -133,7 +133,7 @@ only reads the file when you pass it):
 ```bash
 docker compose -f docker-compose.prod.yml --env-file deploy/.env.prod ps   # all healthy?
 curl -s localhost/api/gene/TP53 | head -c 200          # backend via Caddy
-docker logs omnigraph-neo4j 2>&1 | tail -60            # raw docker logs need no --env-file
+docker logs omicgraph-neo4j 2>&1 | tail -60            # raw docker logs need no --env-file
 ```
 Then open **`http://<VM_IP>/`** in your browser — the 3D graph + the chat panel.
 
@@ -167,7 +167,7 @@ backfill, not just the nightly agent:** the transferred graph has ~20k proteins 
 raise `EMBEDDING_AGENT_BATCH_SIZE` in `deploy/.env.prod` (re-up the backend), and call
 the run endpoint repeatedly until none remain. Check what's left directly in Neo4j:
 ```bash
-docker exec omnigraph-neo4j cypher-shell -u neo4j -p "$NEO4J_PASSWORD" \
+docker exec omicgraph-neo4j cypher-shell -u neo4j -p "$NEO4J_PASSWORD" \
   "MATCH (p:Protein) WHERE p.summary_text IS NOT NULL AND p.embedding IS NULL RETURN count(p)"
 # then, until that count is 0:
 curl -s -XPOST localhost/api/admin/agents/embedding/run
@@ -204,7 +204,7 @@ tail -f ~/gnomad.log ~/uniprot.log        # live crawl output
 pgrep -af 'etl/16_gnomad_af|etl/06_uniprot'   # still running?
 
 # coverage climbing in the graph (re-run periodically — the counts go up):
-docker exec omnigraph-neo4j cypher-shell -u neo4j -p "$PW" \
+docker exec omicgraph-neo4j cypher-shell -u neo4j -p "$PW" \
   "MATCH (v:Variant) RETURN count(v.gnomad_af) AS variants_with_af;
    MATCH (p:Protein) RETURN count(p.summary_text) AS proteins_with_summary,
                             count(p.embedding)    AS proteins_with_embedding;"

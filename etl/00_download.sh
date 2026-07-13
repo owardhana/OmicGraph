@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Download all raw source files for the OmniGraph ETL pipeline into data/raw/.
+# Download all raw source files for the OmicGraph ETL pipeline into data/raw/.
 # Idempotent: files already present (non-empty) are skipped. Re-run safely.
 #
 # Sources:

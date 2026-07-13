@@ -1,4 +1,4 @@
-"""OmniGraph FastAPI application.
+"""OmicGraph FastAPI application.
 
 Startup creates the Neo4j indexes (idempotent) and starts the APScheduler
 nightly CitationAgent cron. All routers (genes, transcripts, search, chat,
@@ -62,7 +62,7 @@ async def lifespan(app: FastAPI):
     await close_driver()
 
 
-app = FastAPI(title="OmniGraph API", version="0.1.0", lifespan=lifespan)
+app = FastAPI(title="OmicGraph API", version="0.1.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,

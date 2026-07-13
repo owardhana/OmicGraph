@@ -16,7 +16,7 @@ VOLUME="${NEO4J_VOLUME:-project_omni_neo4j_data}"
 mkdir -p dumps
 
 echo "==> Stopping local Neo4j (offline dump needs it stopped)…"
-docker compose stop neo4j 2>/dev/null || docker stop omnigraph-neo4j 2>/dev/null || true
+docker compose stop neo4j 2>/dev/null || docker stop omicgraph-neo4j 2>/dev/null || true
 
 echo "==> Dumping database 'neo4j' from volume ${VOLUME}…"
 docker run --rm \
@@ -26,7 +26,7 @@ docker run --rm \
   neo4j-admin database dump neo4j --to-path=/dumps --overwrite-destination
 
 echo "==> Restarting local Neo4j…"
-docker compose start neo4j 2>/dev/null || docker start omnigraph-neo4j 2>/dev/null || true
+docker compose start neo4j 2>/dev/null || docker start omicgraph-neo4j 2>/dev/null || true
 
 echo ""
 echo "Done -> dumps/neo4j.dump ($(du -h dumps/neo4j.dump 2>/dev/null | cut -f1))"

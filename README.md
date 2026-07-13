@@ -1,4 +1,4 @@
-# OmniGraph
+# OmicGraph
 
 A multi-omics knowledge graph for human biology — a navigable, tissue-segmented,
 literature-cited map of molecular causality from TF binding through transcription,
@@ -154,7 +154,7 @@ direct Cypher.)
 
 ## Deployment (production)
 
-OmniGraph runs 24/7 on a single free-tier **Oracle Cloud Ampere A1** VM via
+OmicGraph runs 24/7 on a single free-tier **Oracle Cloud Ampere A1** VM via
 [`docker-compose.prod.yml`](docker-compose.prod.yml): Neo4j (private, loopback-bound),
 the FastAPI backend (private), and **Caddy** as the only public service — it serves the
 built frontend and reverse-proxies `/api` (with SSE streaming for chat), auto-HTTPS when

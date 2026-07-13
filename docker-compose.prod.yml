@@ -1,4 +1,4 @@
-# OmniGraph production stack — single-host deploy (Oracle Cloud Ampere A1, arm64).
+# OmicGraph production stack — single-host deploy (Oracle Cloud Ampere A1, arm64).
 #
 #   docker compose -f docker-compose.prod.yml --env-file deploy/.env.prod up -d --build
 #
@@ -12,7 +12,7 @@
 services:
   neo4j:
     image: neo4j:5
-    container_name: omnigraph-neo4j
+    container_name: omicgraph-neo4j
     restart: unless-stopped
     # Bound to LOOPBACK only (127.0.0.1): reachable on the box itself for admin
     # (cypher-shell) and the host-run ETL crawls, but NEVER from the public internet
@@ -38,7 +38,7 @@ services:
 
   backend:
     build: ./backend
-    container_name: omnigraph-backend
+    container_name: omicgraph-backend
     restart: unless-stopped
     expose:
       - "8000"
@@ -54,7 +54,7 @@ services:
     build:
       context: .
       dockerfile: deploy/Dockerfile.web
-    container_name: omnigraph-web
+    container_name: omicgraph-web
     restart: unless-stopped
     ports:
       - "80:80"

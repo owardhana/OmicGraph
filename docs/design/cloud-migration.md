@@ -17,14 +17,14 @@ backfill) run unattended.
 
 ## Architecture: keep Neo4j the core; sidecar only if needed
 
-OmniGraph is a **graph**. Cypher traversal (signal-decay, shortest-path, the backbone
+OmicGraph is a **graph**. Cypher traversal (signal-decay, shortest-path, the backbone
 pre-pass) is the product. A relational/NoSQL store (Supabase=Postgres, Firebase=NoSQL
 doc) **cannot replace Neo4j** without rewriting traversal as recursive CTEs and losing
 the whole model. So:
 
 - **Graph core → self-hosted Neo4j on Oracle Cloud Always-Free Ampere A1.** It is the
   only always-free tier large enough: AuraDB Free caps at ~200k nodes / 400k rels and
-  OmniGraph is ~622k / 2.04M (3–5× too big); every other cloud's always-free VM is ~1 GB
+  OmicGraph is ~622k / 2.04M (3–5× too big); every other cloud's always-free VM is ~1 GB
   RAM while Neo4j here wants 8 GB+. A1 is also architecture-identical to the dev laptop
   (both arm64), so porting risk is near-zero.
 - **Supabase/Firebase = optional relational *sidecar*, not the graph host.** They fit

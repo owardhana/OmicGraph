@@ -26,7 +26,7 @@ on Gene, Protein, and Disease nodes where `summary_text IS NOT NULL`.
 
 ## Reason
 
-The defining capability for OmniGraph is composing semantic search **with graph
+The defining capability for OmicGraph is composing semantic search **with graph
 traversal in a single query**:
 
 ```cypher

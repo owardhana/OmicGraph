@@ -12,7 +12,7 @@ VOLUME="${NEO4J_VOLUME:-project_omni_neo4j_data}"   # see note in dump_graph.sh
 [ -f dumps/neo4j.dump ] || { echo "ERROR: dumps/neo4j.dump not found (scp it here first)"; exit 1; }
 
 echo "==> Stopping prod Neo4j (offline load)…"
-docker compose -f docker-compose.prod.yml stop neo4j 2>/dev/null || docker stop omnigraph-neo4j 2>/dev/null || true
+docker compose -f docker-compose.prod.yml stop neo4j 2>/dev/null || docker stop omicgraph-neo4j 2>/dev/null || true
 
 echo "==> Loading database 'neo4j' into volume ${VOLUME} (overwrite)…"
 docker run --rm \
@@ -26,4 +26,4 @@ docker compose -f docker-compose.prod.yml --env-file deploy/.env.prod start neo4
 
 echo ""
 echo "Done. Verify once it's healthy:"
-echo "  docker exec omnigraph-neo4j cypher-shell -u neo4j -p <PASSWORD> 'MATCH (n) RETURN count(n)'"
+echo "  docker exec omicgraph-neo4j cypher-shell -u neo4j -p <PASSWORD> 'MATCH (n) RETURN count(n)'"

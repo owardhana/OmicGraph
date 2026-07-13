@@ -1,4 +1,4 @@
-# OmniGraph — Agent Definitions
+# OmicGraph — Agent Definitions
 
 Agents are autonomous processes that read/write the graph or respond to user queries.
 Each agent has a defined scope, trigger, and hard constraints.

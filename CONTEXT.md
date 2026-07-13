@@ -1,6 +1,6 @@
-# OmniGraph
+# OmicGraph
 
-Domain language for OmniGraph — a tissue-segmented, multi-omics knowledge graph
+Domain language for OmicGraph — a tissue-segmented, multi-omics knowledge graph
 of human molecular biology. This file is a glossary, not a spec: it defines what
 each term **is**, not how it is implemented.
 
@@ -132,6 +132,18 @@ classification. Directed, variant → disease. Carries `p_value`, `beta`,
 A rolled-up **gene**-to-**disease** association (aggregated from GWAS Catalog
 variant-level hits). Directed, gene → disease. A convenience edge for direct
 gene-disease queries without traversing through individual variants.
+_Avoid_: using this label for non-GWAS gene-disease links — it is GWAS-specific.
+
+**Gene-disease association**:
+A **gene**-to-**disease** link from a *curated* source (DoRothEA-style expert
+curation — DisGeNET curated tier only, never the text-mined tier), carrying a
+`gda_score`. Directed, gene → disease. Label `GENE_DISEASE_ASSOC`. Deliberately
+distinct from **Implicated in** (GWAS-statistical) and **Differentially expressed**
+(TCGA-expression): the three are *orthogonal evidence classes* converging on the
+same Disease node. DisGeNET diseases (UMLS CUI) are reconciled CUI → EFO (routed via
+MONDO); an association whose disease has no existing EFO Disease node is **dropped** —
+Disease stays EFO-keyed (see Identity rule below).
+_Avoid_: folding this into `IMPLICATED_IN`; minting CUI-keyed Disease nodes.
 
 ### Provenance & trust
 
@@ -182,6 +194,16 @@ protein `TP53 (protein)`), all derived from each other. Kept distinct by:
 - **Traversal terms** ("signal", "conductance", "decay", "signal floor") are
   *algorithm* vocabulary — see [ADR-0005](docs/adr/0005-signal-decay-traversal.md).
   Deliberately kept out of this glossary.
+- **"Subcellular location"** is a scored, multi-value **property** on a Protein — a
+  spatial *channel* (like tissue, [ADR-0006](docs/adr/0006-tissue-as-visual-channel.md)),
+  never a node. `Compartment` is **not** an entity kind. Location enables
+  compartment-aware `INTERACTS_WITH` filtering (shared-compartment gate). Membrane
+  *topology* (TopDB) is a separate concept, not subcellular location.
+- **"Pathway / GO gene set"** membership is a scored **annotation property**, never a
+  node. `Pathway` / `GeneSet` is **not** an entity kind — OmicGraph is *not a pathway
+  browser* (see [vision-and-mvp.md](docs/vision-and-mvp.md)). GO IDs are resolved to
+  readable BP/CC/MF names; pathway membership comes from Reactome + MSigDB C5 (never
+  KEGG-proper — license-barred; `KEGG_MEDICUS` only if needed).
 
 ## Example dialogue
 

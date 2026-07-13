@@ -802,7 +802,7 @@
 .search-clear:hover { color: var(--text); }
 .search-option.active { background: var(--panel-hover); }
 
-/* ---- Ask OmniGraph — agentic chat panel (Feature 1) ---- */
+/* ---- Ask OmicGraph — agentic chat panel (Feature 1) ---- */
 .chat-panel {
   position: absolute;
   bottom: 28px;

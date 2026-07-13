@@ -1,4 +1,4 @@
-# OmniGraph — Data Architecture & Catalog
+# OmicGraph — Data Architecture & Catalog
 
 The authoritative reference for the graph's data model: the layered omics
 structure, the ETL ingestion patterns, and complete field-level provenance for
@@ -15,7 +15,7 @@ in [`roadmap.md`](roadmap.md).
 
 ## 1. The layered model
 
-OmniGraph is a multi-omics knowledge graph of human biology. Nodes are biological
+OmicGraph is a multi-omics knowledge graph of human biology. Nodes are biological
 entities; edges are directed, typed, evidence-scored relationships. The graph is
 visualised as stacked planes (a "graphite" structure):
 

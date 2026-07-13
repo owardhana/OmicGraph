@@ -24,7 +24,7 @@ function Assistant({ text }: { text: string }) {
   );
 }
 
-// The single "Ask OmniGraph" assistant (Feature 1): multi-turn, streaming, tool-using
+// The single "Ask OmicGraph" assistant (Feature 1): multi-turn, streaming, tool-using
 // over the live graph, with server-side conversational memory. Replaces the former
 // one-shot Text2Cypher box — this is the sole chat surface.
 export default function ChatPanel({ tissue }: Props) {
@@ -54,7 +54,7 @@ export default function ChatPanel({ tissue }: Props) {
           aria-expanded={open}
         >
           <span className="chat-caret">{open ? '▾' : '▸'}</span>
-          Ask OmniGraph
+          Ask OmicGraph
         </button>
         {open && messages.length > 0 && (
           <button
@@ -100,7 +100,7 @@ export default function ChatPanel({ tissue }: Props) {
           <div className="chat-input-row">
             <input
               className="chat-input"
-              placeholder="Ask OmniGraph…"
+              placeholder="Ask OmicGraph…"
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && submit()}

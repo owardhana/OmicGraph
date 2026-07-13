@@ -1,4 +1,4 @@
-// Typed fetch wrappers for the OmniGraph backend.
+// Typed fetch wrappers for the OmicGraph backend.
 
 import type {
   CandidateDetail,
@@ -161,7 +161,7 @@ export const DEFAULT_GENE = (import.meta.env.VITE_DEFAULT_GENE as string) || 'TP
 // --- Admin review dashboard (Feature 2 P3, ADR-0014) ---------------------------
 // The /admin router is gated by an ADMIN_TOKEN (sent as X-Admin-Token). Stored in
 // localStorage so it survives reloads; empty is fine for local dev (token unset).
-const ADMIN_TOKEN_KEY = 'omnigraph_admin_token';
+const ADMIN_TOKEN_KEY = 'omicgraph_admin_token';
 
 export const getAdminToken = (): string => localStorage.getItem(ADMIN_TOKEN_KEY) ?? '';
 export const setAdminToken = (t: string): void => localStorage.setItem(ADMIN_TOKEN_KEY, t);

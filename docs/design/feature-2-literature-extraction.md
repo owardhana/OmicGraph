@@ -12,14 +12,14 @@ what's built vs. remaining (P3).
 ## Goal
 
 A scheduled agent that reads biomedical papers (nightly PubMed delta + a deferred
-historical backfill), decides whether any node↔node relationship in OmniGraph's
+historical backfill), decides whether any node↔node relationship in OmicGraph's
 vocabulary is *asserted*, extracts it with provenance, and **proposes** it as a
 candidate — never a trusted edge. After extraction the paper text is discarded (only
 PMID + supporting sentence span kept), so storage stays bounded.
 
 ## The hard part is trust, not plumbing
 
-OmniGraph's credibility rests on one rule: **agents never hallucinate biology.**
+OmicGraph's credibility rests on one rule: **agents never hallucinate biology.**
 `CitationAgent` only attaches PMIDs to *existing* edges; `EmbeddingAgent` only writes
 vectors. Neither invents topology. A literature extractor *does* propose new topology,
 which breaks that rule unless firewalled:

@@ -13,7 +13,7 @@ RELATION_DESC = {
 }
 
 EXTRACTION_SYSTEM_PROMPT = """You are a biomedical relation-extraction validator for \
-OmniGraph. Given ONE sentence from a paper abstract and two named entities, decide \
+OmicGraph. Given ONE sentence from a paper abstract and two named entities, decide \
 whether the sentence ASSERTS the specified relationship between them.
 
 Rules:
