@@ -21,9 +21,9 @@ via `REGULATES`. Tissue is a visual opacity channel, not a separate graph.
 variants, EFO diseases, TCGA differential expression, and a connected Recon3D
 metabolite layer. See [`docs/roadmap.md`](docs/roadmap.md) for the live tally.
 
-Query it two ways: a single-shot **Text2Cypher** box, or an **agentic chat assistant**
-(`ChatAgent`) that streams answers while calling read-only graph tools (search,
-subgraph, shortest-path, read-only Cypher) with conversational memory. Runs locally,
+Query it through an **agentic chat assistant** (`ChatAgent`) that streams answers while
+calling read-only graph tools (search, subgraph, shortest-path, read-only Cypher) with
+conversational memory — including a natural-language→Cypher escape hatch. Runs locally,
 or **24/7 in production** on a free Oracle Cloud VM — see
 [`docs/deploy/oracle-runbook.md`](docs/deploy/oracle-runbook.md).
 
@@ -35,7 +35,7 @@ or **24/7 in production** on a free Oracle Cloud VM — see
 Frontend  React + TypeScript + Vite + react-force-graph-3d (Three.js)   :3000
 Backend   FastAPI (Python 3.11+, async)                                  :8000
 Graph DB  Neo4j Community 5.x (Docker)                          :7474 / :7687
-LLM       OpenRouter (Text2Cypher, synthesis, embeddings, citations)
+LLM       OpenRouter (chat tool-loop, synthesis, embeddings, citations)
 ETL       Python (pandas / scipy / neo4j driver), DAG runner
 ```
 
@@ -104,7 +104,8 @@ proteins) · [0005](docs/adr/0005-signal-decay-traversal.md) (signal-decay trave
 [0010](docs/adr/0010-full-proteome.md) (full proteome) ·
 [0011](docs/adr/0011-backbone-guaranteed-traversal.md) (backbone-guaranteed traversal) ·
 [0012](docs/adr/0012-metabolite-bridge-connectivity.md) (metabolite bridge — opt-in) ·
-[0013](docs/adr/0013-literature-extraction-trust-model.md) (literature-extraction trust model).
+[0013](docs/adr/0013-literature-extraction-trust-model.md) (literature-extraction trust model) ·
+[0014](docs/adr/0014-literature-review-dashboard.md) (literature review dashboard — human-gate).
 
 ---
 
@@ -146,8 +147,7 @@ backend/.venv/bin/python -m pytest backend/tests/ -q
 ```
 
 `test_queries.py` checks Cypher correctness against the live Neo4j; `test_agents.py`
-asserts the citation agent writes PMIDs only (never topology); `test_text2cypher.py`
-checks benchmark questions produce valid read-only Cypher; `test_traversal_bridge.py`
+asserts the citation agent writes PMIDs only (never topology); `test_traversal_bridge.py`
 locks the ADR-0011/0012 golden traversal values. (Note: pytest import is slow when the
 repo lives under an iCloud-synced directory; data gates can also be confirmed via
 direct Cypher.)

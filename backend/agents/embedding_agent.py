@@ -14,12 +14,11 @@ import logging
 from backend.agents.base_agent import BaseAgent
 from backend.config import settings
 from backend.db.neo4j_client import get_session
-from backend.llm.client import get_client
+from backend.llm.client import embed_text
 
 logger = logging.getLogger(__name__)
 
 _EMBED_DIM = 1536
-_MAX_CHARS = 8000  # keep well under the model's token limit
 
 # Canonical key field per embeddable label. Doubles as a label allowlist so the
 # label/id_field interpolated into Cypher can never be user input.
@@ -28,7 +27,7 @@ _ID_FIELD = {"Gene": "ensembl_id", "Protein": "uniprot_id", "Disease": "ontology
 # Gene/Protein embed their UniProt/NCBI summary_text; Disease embeds its trait
 # description (Transcript/Variant carry no meaningful free text — not embedded).
 _FETCH_UNEMBEDDED = """
-CALL {
+CALL () {
   MATCH (n:Gene)
   WHERE n.summary_text IS NOT NULL AND n.embedding IS NULL
   RETURN 'Gene' AS label, n.ensembl_id AS id, n.summary_text AS text
@@ -57,10 +56,7 @@ class EmbeddingAgent(BaseAgent):
             ).data()
 
     async def _embed(self, text: str) -> list[float]:
-        response = await get_client().embeddings.create(
-            model=settings.EMBEDDING_MODEL, input=text[:_MAX_CHARS]
-        )
-        return response.data[0].embedding
+        return await embed_text(text)
 
     async def _write_embedding(
         self, label: str, node_id: str, embedding: list[float]

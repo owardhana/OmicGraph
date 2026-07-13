@@ -17,10 +17,7 @@ from backend.db.queries.genes import (
 )
 from backend.db.queries.genes import get_gene_cancer_associations
 from backend.db.queries.graph import search_entities, search_genes
-from backend.db.queries.metabolites import (
-    get_metabolite_by_id,
-    get_metabolite_neighborhood,
-)
+from backend.db.queries.metabolites import get_metabolite_neighborhood
 from backend.db.queries.traversal import signal_decay_subgraph
 
 # Phase-2 entities present in the live graph (GWAS/ClinVar/STRING-derived). EFO

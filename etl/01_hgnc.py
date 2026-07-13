@@ -4,6 +4,12 @@ Parses hgnc_complete_set.txt and MERGEs a Gene node per row that has a valid
 Ensembl gene ID. Idempotent (MERGE on ensembl_id). Run after 00_download.sh:
 
     etl/.venv/bin/python etl/01_hgnc.py
+
+Also loads `aliases` — the union of HGNC `alias_symbol` + `prev_symbol` (both
+pipe-separated), minus the canonical symbol. This is dictionary fuel for the
+literature-extraction agent (Feature 2): papers say "p53"/"LFS1", the graph says
+`TP53`, and entity-linking needs the surface forms to resolve to the ENSG. Re-run
+this script to backfill `aliases` onto an existing graph (MERGE is idempotent).
 """
 
 import re
@@ -28,8 +34,24 @@ SET g.hgnc_symbol = row.hgnc_symbol,
     g.hgnc_id = row.hgnc_id,
     g.description = row.description,
     g.chromosome = row.chromosome,
-    g.biotype = row.biotype
+    g.biotype = row.biotype,
+    g.aliases = row.aliases
 """
+
+
+def parse_aliases(row: pd.Series, canonical: str) -> list[str]:
+    """Union of HGNC ``alias_symbol`` + ``prev_symbol`` (both '|'-separated),
+    de-duplicated (order-preserving) and excluding the canonical symbol itself."""
+    seen: dict[str, None] = {}
+    for col in ("alias_symbol", "prev_symbol"):
+        raw = row.get(col)
+        if not isinstance(raw, str):
+            continue
+        for token in raw.split("|"):
+            t = token.strip()
+            if t and t != canonical:
+                seen.setdefault(t, None)
+    return list(seen)
 
 
 def parse_chromosome(location: str | None) -> str | None:
@@ -81,14 +103,16 @@ def load_rows() -> list[dict]:
             if chrom_source == "chromosome" and pd.notna(chrom_raw)
             else parse_chromosome(chrom_raw if pd.notna(chrom_raw) else None)
         )
+        symbol = str(r["symbol"]).strip()
         rows.append(
             {
                 "ensembl_id": ensembl,
-                "hgnc_symbol": str(r["symbol"]).strip(),
+                "hgnc_symbol": symbol,
                 "hgnc_id": str(r.get("hgnc_id") or "").strip() or None,
                 "description": str(r.get(name_col) or "").strip() or None,
                 "chromosome": chromosome,
                 "biotype": "protein_coding",
+                "aliases": parse_aliases(r, symbol),
             }
         )
     return rows

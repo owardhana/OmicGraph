@@ -29,8 +29,8 @@ Live in Neo4j Community 5.x (Docker, named volume).
 
 - **Phases 1–2 (genomics → proteomics → disease):** Gene/Transcript/Protein/Variant/
   Disease nodes; REGULATES, PRODUCES, TRANSLATES_TO/ENCODES, INTERACTS_WITH, IN_GENE,
-  ASSOCIATED_WITH, IMPLICATED_IN. Text2Cypher, citation + embedding agents, semantic
-  search, 3D viz, Entity Browser, shortest-path.
+  ASSOCIATED_WITH, IMPLICATED_IN. Agentic chat assistant, citation + embedding agents,
+  semantic search, 3D viz, Entity Browser, shortest-path.
 - **Full proteome (ADR-0010):** Protein 117 → 20,077, minted directly by
   `05_proteins.py` (TRANSLATES_TO + ENCODES, TF-subtype tag, REGULATES migration).
   This connected the metabolite layer (CATALYSES 8 → 24,545). STRING re-run at the
@@ -99,13 +99,18 @@ laptop contention, so the always-on box is their proper home. Both are resumable
 - **GTEx tissue panel expansion**, **co-expression networks**
   (`CO_EXPRESSED_WITH`, needs TCGA+GTEx counts in one pipeline), **cell-type
   resolution** (indefinitely deferred — data too noisy vs tissue level).
-- **Literature extraction agent** — new-edge proposals. Design **locked** (grill
-  session 2026-07-01): closed-world, dictionary-linked, 2 edge types
-  (`INTERACTS_WITH`+`IMPLICATED_IN`), cheap-LLM relation gate, `:CandidateEdge`
-  staging, local-only MVP. Plan:
-  [`docs/design/feature-2-literature-extraction.md`](design/feature-2-literature-extraction.md);
-  trust model: [ADR-0013](adr/0013-literature-extraction-trust-model.md). Build is the
-  next session (P1 = extraction-to-staging; promotion gate + backfill are P2/P3).
+- **Literature extraction agent** — new-edge proposals. **P1 + P2 BUILT (2026-07-02),
+  OFF by default** on branch `feat/literature-extraction-mvp`: closed-world,
+  dictionary-linked, 2 edge types (`INTERACTS_WITH`+`IMPLICATED_IN`), cheap-LLM relation
+  gate, `:CandidateEdge` staging (P1); `ValidationAgent` promotion + `provenance_tier`
+  conductance discount + "proposed" edge rendering (P2, auto-promote off/uncalibrated).
+  Plan: [`docs/design/feature-2-literature-extraction.md`](design/feature-2-literature-extraction.md);
+  trust model: [ADR-0013](adr/0013-literature-extraction-trust-model.md).
+  **Remaining (P3):** calibrate auto-promote (run `RUN_EXTRACTION_EVAL`), historical
+  backfill + tiered models, more edge types (`CATALYSES`/`REGULATES`/`ASSOCIATED_WITH`),
+  Oracle host + cron. **Admin review dashboard BUILT (2026-07-03)** — human-gate
+  promotion surface at `#/admin` ([ADR-0014](adr/0014-literature-review-dashboard.md)):
+  two-pane queue, `ADMIN_TOKEN`-gated, approve/reject/revert with exact-delta revert.
 - **Horizontal metabolite reach-through for pure-TF seeds** — surfacing
   metabolites that belong to a TF's regulated genes. Explicitly rejected as the
   current floor (semantically muddier; ADR-0011 "Rejected alternatives"); the

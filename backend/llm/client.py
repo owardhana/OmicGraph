@@ -10,9 +10,10 @@ from backend.config import settings
 
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 
-TEXT2CYPHER_MODEL = settings.TEXT2CYPHER_MODEL
 SYNTHESIS_MODEL = settings.SYNTHESIS_MODEL
 CITATION_CHECK_MODEL = settings.CITATION_CHECK_MODEL
+
+_EMBED_MAX_CHARS = 8000  # keep well under the embedding model's token limit
 
 _client: AsyncOpenAI | None = None
 
@@ -25,6 +26,18 @@ def get_client() -> AsyncOpenAI:
             api_key=settings.OPENROUTER_API_KEY,
         )
     return _client
+
+
+async def embed_text(text: str) -> list[float]:
+    """Embed a single text with the configured embedding model (ADR-0008).
+
+    Shared by the EmbeddingAgent (batch node enrichment) and the chat
+    ``semantic_search`` tool (embedding the live query). Each call hits the
+    OpenRouter embeddings API — cheap, but not free."""
+    response = await get_client().embeddings.create(
+        model=settings.EMBEDDING_MODEL, input=text[:_EMBED_MAX_CHARS]
+    )
+    return response.data[0].embedding
 
 
 async def complete(model: str, messages: list[dict], **kwargs) -> str:

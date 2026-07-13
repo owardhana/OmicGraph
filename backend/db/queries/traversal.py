@@ -43,6 +43,20 @@ _BACKBONE_MAX_DEPTH = 4
 
 
 def _conductance(rel_type: str, rel_props: dict) -> float:
+    """Per-edge conductance, with the ADR-0013 literature-tier discount applied.
+
+    A promoted literature edge (``provenance_tier == 'literature'``) conducts strictly
+    less than the canonical edge of the same type — a single-sentence claim carries
+    less signal than consortium data. Absent tier = canonical (never written), so this
+    is a no-op on the existing graph until literature edges are promoted.
+    """
+    base = _base_conductance(rel_type, rel_props)
+    if rel_props.get("provenance_tier") == "literature":
+        base *= settings.LITERATURE_CONDUCTANCE_FACTOR
+    return base
+
+
+def _base_conductance(rel_type: str, rel_props: dict) -> float:
     """Per-edge conductance (ADR-0005, extended for Phase 2 — docs/data-architecture.md)."""
     if rel_type == "REGULATES":
         c = rel_props.get("confidence")
@@ -176,15 +190,14 @@ def _cap_dense_frontier(rows: list[dict], capped_types: set[str]) -> list[dict]:
 # internal elementId + node payload the traversal works with.
 _RESOLVE_SEEDS = """
 UNWIND $keys AS key
-CALL {
-  WITH key
+CALL (key) {
   MATCH (n:Gene {ensembl_id: key}) RETURN n
-  UNION WITH key MATCH (n:Transcript {ensembl_tx_id: key}) RETURN n
-  UNION WITH key MATCH (n:Protein {uniprot_id: key}) RETURN n
-  UNION WITH key MATCH (n:Variant {rsid: key}) RETURN n
-  UNION WITH key MATCH (n:Disease {ontology_id: key}) RETURN n
-  UNION WITH key MATCH (n:Metabolite {hmdb_id: key}) RETURN n
-  UNION WITH key MATCH (n:Metabolite {chebi_id: key}) RETURN n
+  UNION MATCH (n:Transcript {ensembl_tx_id: key}) RETURN n
+  UNION MATCH (n:Protein {uniprot_id: key}) RETURN n
+  UNION MATCH (n:Variant {rsid: key}) RETURN n
+  UNION MATCH (n:Disease {ontology_id: key}) RETURN n
+  UNION MATCH (n:Metabolite {hmdb_id: key}) RETURN n
+  UNION MATCH (n:Metabolite {chebi_id: key}) RETURN n
 }
 RETURN elementId(n) AS eid,
        labels(n)[0] AS label,

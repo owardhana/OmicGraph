@@ -35,7 +35,6 @@ class Settings(BaseSettings):
     NCBI_API_KEY: str = ""
 
     # Models (OpenRouter slugs)
-    TEXT2CYPHER_MODEL: str = "anthropic/claude-sonnet-4.6"
     SYNTHESIS_MODEL: str = "anthropic/claude-sonnet-4.6"
     CITATION_CHECK_MODEL: str = "anthropic/claude-haiku-4.5"
     # Phase 2: embedding model for semantic search (ADR-0008). 1536-dim.
@@ -88,6 +87,40 @@ class Settings(BaseSettings):
     GWAS_MIN_SIGNIFICANCE: float = 5e-8  # GWAS p-value cutoff (genome-wide significance)
     EMBEDDING_AGENT_BATCH_SIZE: int = 50  # nodes per embedding agent run
     EMBEDDING_AGENT_CRON_HOUR: int = 1  # 1am UTC (after citation agent at midnight)
+    # Nightly embedding crawl hits the OpenRouter embeddings API (costs $). Default
+    # OFF — populate on demand via POST /admin/agents/embedding/run instead. The
+    # semantic_search chat tool queries whatever vectors already exist regardless.
+    EMBEDDING_AGENT_CRON_ENABLED: bool = False
+
+    # --- Literature extraction (Feature 2, P1) — all tunable, never hardcode ---
+    # Master switch. OFF by default: the extractor spends on NCBI E-utils + the LLM,
+    # so the admin trigger refuses unless this is true. Nothing runs unattended.
+    EXTRACTION_AGENT_ENABLED: bool = False
+    # Cheap deterministic model for the per-sentence relation verdict (haiku by default).
+    EXTRACTION_MODEL: str = "anthropic/claude-haiku-4.5"
+    PUBMED_DELTA_TERM: str = "humans[MeSH Terms]"  # broad biomedical delta scope
+    PUBMED_DELTA_DAYS: int = 1        # esearch reldate window (nightly = 1)
+    PUBMED_DELTA_RETMAX: int = 200    # max PMIDs per delta run (scaffold cap)
+    EXTRACTION_CONFIDENCE_FLOOR: float = 0.5  # candidates below this are not surfaced
+    EXTRACTION_EFETCH_BATCH: int = 100  # PMIDs per efetch call
+
+    # --- Feature 2 P2 — promotion + provenance-tier discount (ADR-0013) ---
+    # Promoted literature edges conduct less signal than canonical ones (a
+    # single-sentence claim < consortium data). Applied multiplicatively in traversal.
+    LITERATURE_CONDUCTANCE_FACTOR: float = 0.5
+    # Auto-promote is UNCALIBRATED until the precision harness (RUN_EXTRACTION_EVAL)
+    # produces a number — default OFF; use manual approve/reject. When on, a candidate
+    # promotes iff confidence >= threshold AND >= N independent affirming PMIDs AND no
+    # contradicting evidence.
+    VALIDATION_AUTO_PROMOTE_ENABLED: bool = False
+    VALIDATION_AUTO_PROMOTE_CONFIDENCE: float = 0.75
+    VALIDATION_MIN_INDEPENDENT_PMIDS: int = 2
+
+    # --- Feature 2 P3 — admin review dashboard (ADR-0014) ---
+    # Gates the /admin router. Empty (default) = open, for local single-user dev; set a
+    # non-empty secret on any shared/public host (the frontend sends it as X-Admin-Token,
+    # and Caddy basic-auth sits in front as a second layer).
+    ADMIN_TOKEN: str = ""
 
     @property
     def tissues(self) -> list[str]:

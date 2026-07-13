@@ -19,6 +19,14 @@
 		reverse_proxy backend:8000
 	}
 
+	# Admin review dashboard API (Feature 2 P3, ADR-0014). MUST proxy to the backend —
+	# without this, /admin/* falls through to the SPA handler and returns index.html, so
+	# the dashboard silently 404s in prod. The backend gates writes on ADMIN_TOKEN; wrap
+	# this block in `basic_auth` for a second layer on a public host.
+	handle /admin/* {
+		reverse_proxy backend:8000
+	}
+
 	# Everything else -> the SPA; unknown paths fall back to index.html (client routing).
 	handle {
 		root * /srv

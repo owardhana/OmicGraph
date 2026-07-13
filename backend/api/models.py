@@ -129,6 +129,9 @@ class GraphEdge(BaseModel):
     role: Optional[str] = None  # CATALYSES: "substrate" | "product"
     reaction_id: Optional[str] = None  # CATALYSES: Recon3D reaction ID
     source_db: Optional[str] = None
+    # 'literature' on machine-proposed edges promoted from literature (ADR-0013);
+    # absent/None = canonical consortium data. Drives the frontend "proposed" styling.
+    provenance_tier: Optional[str] = None
     pmids: list[str] = Field(default_factory=list)
     citation_attempted: bool = False
 
@@ -171,20 +174,6 @@ class SearchResult(BaseModel):
     ensembl_id: Optional[str] = None  # populated for gene results (back-compat)
 
 
-class QueryRequest(BaseModel):
-    question: str
-    tissue: str = "all"
-    max_hops: int = 2
-
-
-class QueryResponse(BaseModel):
-    answer: str
-    cypher: str
-    results: list[dict] = Field(default_factory=list)
-    citations: list[str] = Field(default_factory=list)
-    error: Optional[str] = None
-
-
 class ChatRequest(BaseModel):
     """Agentic chatbot turn (Feature 1). ``session_id`` keys conversational memory;
     the client generates one per conversation and reuses it for follow-ups."""
@@ -212,6 +201,7 @@ class EdgeDetail(BaseModel):
     role: Optional[str] = None  # CATALYSES
     reaction_id: Optional[str] = None
     source_db: Optional[str] = None
+    provenance_tier: Optional[str] = None  # 'literature' = machine-proposed (ADR-0013)
     pmids: list[str] = Field(default_factory=list)
     citation_attempted: bool = False
 
@@ -347,6 +337,7 @@ def edge_from_raw(raw_edge: dict, tissues: list[str]) -> GraphEdge:
         role=props.get("role"),
         reaction_id=props.get("reaction_id"),
         source_db=props.get("source_db"),
+        provenance_tier=props.get("provenance_tier"),
         pmids=_coerce_pmids(props.get("pmids")),
         citation_attempted=bool(props.get("citation_attempted", False)),
     )
@@ -399,6 +390,7 @@ def edge_detail_from_raw(raw_edge: dict, tissues: list[str]) -> EdgeDetail:
         role=props.get("role"),
         reaction_id=props.get("reaction_id"),
         source_db=props.get("source_db"),
+        provenance_tier=props.get("provenance_tier"),
         pmids=_coerce_pmids(props.get("pmids")),
         citation_attempted=bool(props.get("citation_attempted", False)),
     )

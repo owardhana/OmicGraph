@@ -9,14 +9,15 @@ Each agent has a defined scope, trigger, and hard constraints.
 
 ```
 MVP agents (built)
-├── QueryAgent       — Text2Cypher, per-request
 ├── CitationAgent    — PubMed PMID enrichment, nightly
-├── EmbeddingAgent   — semantic-search embeddings, nightly (1am UTC)
-└── ChatAgent        — agentic tool-loop over the graph, streaming, per-request
+├── EmbeddingAgent   — semantic-search embeddings (cron opt-in, default off; run on demand)
+├── ChatAgent        — agentic tool-loop over the graph, streaming, per-request
+│                      (the query surface; replaced the single-shot Text2Cypher endpoint)
+└── ExtractionAgent  — literature -> CandidateEdge proposals (Feature 2 P1 scaffold;
+                       OFF by default, admin-gated; staging only, promotion is P2)
 
 v2 agents (post-demo)
-├── LiteratureAgent  — bioRxiv/PubMed new edge proposals
-├── ValidationAgent  — scores + gates proposed edges
+├── ValidationAgent  — promotion gate: scores + promotes CandidateEdges (Feature 2 P2)
 └── FreshnessAgent   — monitors source DB versions, triggers ETL
 ```
 
@@ -24,57 +25,12 @@ v2 agents (post-demo)
 
 ## MVP Agents
 
-### 1. QueryAgent
+> Natural-language → Cypher querying is no longer a standalone agent. The former
+> single-shot **QueryAgent** (`POST /api/query`, Text2Cypher) was removed once the
+> **ChatAgent** subsumed it: `run_cypher` inside the chat tool-loop does the same
+> NL→Cypher job in-context, validator-gated. See ChatAgent below.
 
-**Role:** Translate user natural language → Cypher → synthesized answer with citations.
-
-**Trigger:** Per user request (HTTP POST /api/query)
-
-**Input:**
-```json
-{
-  "question": "What TFs repress TP53 in liver?",
-  "tissue": "liver",          // optional filter
-  "max_hops": 2               // optional depth
-}
-```
-
-**Flow:**
-```
-user question
-  → system prompt (schema + Cypher examples + rules)
-  → OpenRouter API (anthropic/claude-sonnet-4-6) generates Cypher
-  → validate Cypher syntax (neo4j driver EXPLAIN dry-run)
-  → execute against Neo4j
-  → raw result → OpenRouter API synthesizes natural language answer
-  → attach PMIDs from edge properties to response
-  → return {answer, cypher, results, citations}
-```
-
-**Output:**
-```json
-{
-  "answer": "Three TFs repress TP53 in liver: MDM2 (confidence 0.94), ...",
-  "cypher": "MATCH (tf:Protein)-[r:REGULATES]->(target:Gene)...",
-  "results": [...],
-  "citations": ["12345678", "23456789"]
-}
-```
-
-**Constraints:**
-- Never writes to graph
-- Cypher must be validated before execution (prevent injection)
-- If Cypher invalid after 2 retries → return structured error, not hallucinated answer
-- Max query execution time: 10s timeout
-- No multi-step Cypher chains — single query only for MVP
-
-**Tools:** OpenRouter API, Neo4j driver, Cypher validator
-
-**Files:** `backend/agents/query_agent.py`
-
----
-
-### 2. CitationAgent
+### 1. CitationAgent
 
 **Role:** Enrich existing graph edges with supporting PubMed PMIDs. Never creates new edges or nodes.
 
@@ -115,27 +71,30 @@ fetch batch of edges with no citations
 
 ---
 
-### 3. ChatAgent
+### 2. ChatAgent
 
 **Role:** Conversational, agentic assistant over the graph. Multi-turn, streaming,
-tool-using — the analyst-facing counterpart to QueryAgent's single-shot Text2Cypher.
+tool-using — the analyst-facing query surface (replaced the former single-shot
+Text2Cypher endpoint).
 
 **Trigger:** Per user request (HTTP `POST /api/chat/stream`, Server-Sent Events).
 
 **Flow:**
 ```
 load prior turns (conversational memory) → [system, ...history, user]
-  → stream an LLM turn (OpenRouter, SYNTHESIS_MODEL) advertising 4 read-only tools
+  → stream an LLM turn (OpenRouter, SYNTHESIS_MODEL) advertising 5 read-only tools
   → if it requested tools: run them, append results, loop (max 6 iterations)
   → else: the streamed text is the final answer
   → forced final no-tools turn if the tool budget is exhausted
   → persist the user + assistant turns
 ```
 
-**Tools (all READ-ONLY, no write path):** `search_graph` (resolve name→id),
-`get_subgraph` (signal-decay neighbourhood), `shortest_path` (explain how two entities
-connect), `run_cypher` (read-only aggregations — routed through `validate_cypher`, the
-same single-MATCH guard QueryAgent uses).
+**Tools (all READ-ONLY, no write path):** `search_graph` (resolve name→id, full-text),
+`semantic_search` (find entities by meaning — embeds the query, then vector-searches
+Gene/Protein/Disease; ADR-0008 — the query-time consumer of the EmbeddingAgent's
+vectors), `get_subgraph` (signal-decay neighbourhood), `shortest_path` (explain how two
+entities connect), `run_cypher` (read-only aggregations — routed through
+`validate_cypher`, a single-MATCH read-only guard).
 
 **Memory:** prior user/assistant *text* turns stored in Neo4j as
 `(:ChatSession {id})-[:HAS_TURN]->(:ChatTurn {role, content, seq, ts})`. Tool calls are
@@ -153,74 +112,59 @@ ephemeral (re-run on demand), never persisted. Operational nodes, never biologic
 
 ---
 
+### 3. ExtractionAgent
+
+**Role:** Read PubMed and **propose** node↔node relationships as `CandidateEdge`
+staging nodes — the first agent to propose topology. Closed-world (links only to
+existing graph nodes), abstracts only, MVP edge types `INTERACTS_WITH` + `IMPLICATED_IN`.
+
+**Trigger:** Manual, **gated** — `POST /admin/agents/extraction/run` returns
+`disabled` unless `EXTRACTION_AGENT_ENABLED=true` (spends NCBI + LLM). No cron.
+
+**Flow:** build gazetteer from graph → PubMed reldate delta (E-utils) → per sentence
+with ≥2 distinct linked entities → cheap LLM verdict per in-vocab pair (polarity:
+affirm/negate/hedge) → `stage_verdict`: enrich existing trusted edge, else upsert a
+`CandidateEdge` (+`CandidateEvidence` per PMID; confidence = independent-PMID agreement).
+
+**Constraints (ADR-0013):** NEVER writes trusted topology. Candidates are operational
+labels with endpoint ids as **string properties** (not relationships) → invisible to
+traversal/search/counts. Promoted edges (P2) will carry `provenance_tier='literature'`.
+
+**Files:** `backend/agents/extraction_agent.py`, `backend/extraction/{dictionary,ingest,relation,stage}.py`,
+`backend/llm/prompts/extraction.py`. Design: `docs/design/feature-2-literature-extraction.md`.
+
+---
+
 ## v2 Agents (define now, build later)
 
-### 3. LiteratureAgent
+> **LiteratureAgent is BUILT** as the **ExtractionAgent** (MVP §3 above, Feature 2 P1).
+> Its original sketch here is superseded by [ADR-0013](docs/adr/0013-literature-extraction-trust-model.md):
+> staging label is `CandidateEdge`/`CandidateEvidence` (not `EdgeCandidate`), and
+> promoted edges carry `provenance_tier='literature'` (not `source:agent_extracted`).
+> What remains for v2 is the **promotion gate** below.
 
-**Role:** Monitor new publications (bioRxiv, PubMed) for biologically relevant relationships. Propose new edges as candidates — does NOT write to graph directly.
+### ValidationAgent (Feature 2 P2 — promotion gate) — BUILT (mechanism)
 
-**Trigger:** Weekly cron. Processes papers published in last 7 days matching configured MeSH terms.
+**Role:** Promote a `CandidateEdge` into a REAL typed edge tagged
+`provenance_tier='literature'` + `source_db='literature_extracted'` + supporting
+`pmids` — the only path that writes trusted topology. Re-checks `trusted_edge_exists`
+at promote time (canonical edge appeared since staging → enrich, don't duplicate).
+Idempotent MERGE. `reject` keeps the candidate flagged, never re-proposed.
 
-**Flow:**
-```
-fetch new papers (bioRxiv API + PubMed E-utilities)
-  → filter by relevance (title/abstract keyword match)
-  → for each paper:
-      → extract entity pairs (gene/TF/transcript mentions via NER)
-      → classify relationship type (regulatory / binding / expression)
-      → score confidence (model certainty + journal impact proxy)
-      → write to EdgeCandidates queue (Neo4j or Postgres)
-  → notify admin of queue size
-```
+**Trigger:** Manual `POST /admin/candidates/{triple_key}/{approve,reject}` (the safe
+path). An auto-promote pass (`POST /admin/agents/validation/run`) exists but is
+**default-OFF** (`VALIDATION_AUTO_PROMOTE_ENABLED`) — auto-promote is **uncalibrated**
+until the precision harness (`RUN_EXTRACTION_EVAL`) produces a number. All writes gated
+on the feature master switch `EXTRACTION_AGENT_ENABLED`.
 
-**Output:** `EdgeCandidate` nodes in graph with status `pending_review`.
-Never writes `REGULATES` or `PRODUCES` edges directly.
-
-**Constraints:**
-- All candidates go to validation queue — no direct graph writes
-- Must store: source PMID, extracted sentence, entity pair, relationship type, confidence score
-- Confidence threshold for queue entry: >0.7 (discard lower)
-- Human review required before promotion to graph (ValidationAgent handles automated tier)
-
-**Tools:** bioRxiv API, PubMed E-utilities, Claude API (NER + classification), Neo4j driver
-
-**Files:** `backend/agents/literature_agent.py`
+**Files:** `backend/agents/validation_agent.py`. Auto-promote policy: confidence ≥
+`VALIDATION_AUTO_PROMOTE_CONFIDENCE` AND `n_affirm` ≥ `VALIDATION_MIN_INDEPENDENT_PMIDS`
+AND no contradicting evidence. Promoted edges carry the supporting `pmids` and are
+rendered distinctly in the UI ("proposed", literature tier).
 
 ---
 
-### 4. ValidationAgent
-
-**Role:** Score EdgeCandidates from LiteratureAgent. Auto-promote high-confidence candidates. Flag borderline for human review.
-
-**Trigger:** After each LiteratureAgent run. Also per-candidate via admin UI.
-
-**Flow:**
-```
-fetch EdgeCandidates with status=pending_review
-  → for each candidate:
-      → check: does relationship already exist in graph? (dedup)
-      → check: do source entities exist as nodes? (entity resolution)
-      → cross-reference: does DoRothEA / ENCODE corroborate? (+score)
-      → cross-reference: does any existing PMID on edge overlap? (+score)
-      → compute final score (0-1)
-      → score ≥ 0.85 → auto-promote to graph (source: agent_extracted)
-      → score 0.60-0.84 → flag for human review in admin UI
-      → score < 0.60 → discard, log reason
-```
-
-**Output:** Edges promoted to graph tagged `source: "agent_extracted"`, `review_status: "auto_approved"`.
-
-**Constraints:**
-- Auto-promoted edges must carry: PMID, extracted sentence, agent confidence score, source model version
-- Human-reviewed edges tagged `review_status: "human_approved"`
-- Disputed edges tagged `review_status: "rejected"` — kept in log, never deleted
-- All agent-extracted edges visually distinct in UI (different edge style)
-
-**Files:** `backend/agents/validation_agent.py`
-
----
-
-### 5. FreshnessAgent
+### FreshnessAgent (v2 — not built)
 
 **Role:** Monitor upstream data sources for new versions. Alert when source DB version changes.
 
@@ -285,11 +229,13 @@ Graph = shared state / message bus. No inter-agent HTTP calls.
 ## Admin endpoints (FastAPI)
 
 ```
-POST /admin/agents/citation/run       → trigger CitationAgent manually
-POST /admin/agents/embedding/run      → trigger EmbeddingAgent manually (one batch)
-GET  /admin/agents/citation/log       → last N CitationRun nodes
-GET  /admin/candidates                → EdgeCandidates pending review (v2)
-POST /admin/candidates/{id}/approve   → human approve EdgeCandidate (v2)
-POST /admin/candidates/{id}/reject    → human reject EdgeCandidate (v2)
-GET  /admin/freshness                 → FreshnessAlert nodes (v2)
+POST /admin/agents/citation/run           → trigger CitationAgent manually
+POST /admin/agents/embedding/run          → trigger EmbeddingAgent manually (one batch)
+GET  /admin/agents/{citation,embedding}/log → last N run-log nodes
+POST /admin/agents/extraction/run         → trigger ExtractionAgent (gated: EXTRACTION_AGENT_ENABLED)
+GET  /admin/agents/extraction/candidates  → pending CandidateEdges ≥ confidence floor
+GET  /admin/agents/extraction/log         → last N ExtractionRun nodes
+POST /admin/candidates/{id}/approve       → promote CandidateEdge (ValidationAgent, P2)
+POST /admin/candidates/{id}/reject        → reject CandidateEdge (P2)
+GET  /admin/freshness                     → FreshnessAlert nodes (v2)
 ```

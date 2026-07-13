@@ -362,6 +362,11 @@ Created at backend startup via `create_indexes()` in
 | `disease_embedding_idx` | Vector (cosine, 1536) | `Disease.embedding` | Semantic disease search |
 
 Vector indexes use Neo4j native `db.index.vector` ([ADR-0008](adr/0008-neo4j-native-vector-indexing.md)).
+The **query-time consumer** is the ChatAgent's `semantic_search` tool (embeds the live
+query, then `db.index.vector.queryNodes` over these three indexes). The EmbeddingAgent
+*populates* the vectors; its nightly cron is **opt-in** (`EMBEDDING_AGENT_CRON_ENABLED`,
+default off — it spends on the embeddings API), so backfill runs on demand via
+`POST /admin/agents/embedding/run`.
 The fulltext index is dropped and recreated when Metabolite is added (label lists
 are immutable under `CREATE FULLTEXT ... IF NOT EXISTS`).
 
@@ -417,19 +422,33 @@ specific node properties. Provenance convention: **agent writes carry
 - **Reads:** edges with `pmids = []`. **Writes:** validated PMIDs onto the edge.
 - **Never** creates topology — PMID enrichment only.
 
-### Text2Cypher (query-time, not batch)
-- Reads `apoc.meta.schema()` (cached per process). Generates Cypher from natural
-  language; `validate_cypher()` blocks any write keyword (MERGE/CREATE/DELETE/SET);
-  executes read-only.
-
 ### ChatAgent (query-time, not batch)
-- **Reads** the biological graph through 4 read-only tools (search / subgraph /
-  shortest-path / validator-gated `run_cypher`) — never writes topology.
+- **Reads** the biological graph through 5 read-only tools (search / semantic_search /
+  subgraph / shortest-path / validator-gated `run_cypher`) — never writes topology.
 - **Writes** only its own **operational** memory nodes:
   `(:ChatSession {id, created_at, updated_at})-[:HAS_TURN]->(:ChatTurn {role, content,
   seq, ts})`. These are conversational-memory records, **not biological topology** — they
   carry no `source_agent`/`source_db` provenance and are excluded from the graph model /
   traversal. Only user + assistant *text* turns are stored (tool calls are ephemeral).
+
+### ExtractionAgent (Feature 2, OFF by default)
+- **Reads** PubMed (E-utils) + builds a gazetteer from the graph. **Writes** only
+  **operational staging** nodes: `(:CandidateEdge {triple_key, rel_type, subject_id,
+  object_id, status, provenance_tier:'literature', n_affirm, n_negate, confidence})` with
+  `(:CandidateEvidence {pmid, polarity, sentence_span})-[:SUPPORTS]->(:CandidateEdge)`.
+- **Firewall (ADR-0013):** endpoint ids are **string properties, not relationships** to
+  biological nodes → `CandidateEdge` is invisible to traversal / `search_graph` / counts.
+  Never writes trusted topology.
+
+### ValidationAgent (Feature 2 P2 — promotion gate, OFF by default)
+- **Promotes** a `CandidateEdge` → a **real typed edge** carrying
+  `provenance_tier='literature'`, `source_db='literature_extracted'`, `pmids`, and
+  `confidence`. Re-checks `trusted_edge_exists` → enriches (appends PMIDs, never
+  overwrites canonical `source_db`/tier) instead of duplicating. Idempotent MERGE.
+- **`provenance_tier` field** on edges: `'literature'` = machine-proposed; **absent =
+  canonical** (never written). `_conductance` discounts literature edges by
+  `LITERATURE_CONDUCTANCE_FACTOR`; the frontend renders them as "proposed".
+- Manual `approve`/`reject`; auto-promote is default-OFF (uncalibrated).
 
 ---
 

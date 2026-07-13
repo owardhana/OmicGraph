@@ -229,6 +229,28 @@ A rebuild only replaces the backend/web images. The graph lives in the `neo4j_da
 named volume and persists across `up`/`down`/`--build`. Only `down -v` or an explicit
 `docker volume rm` deletes it.
 
+### Enable the literature review dashboard (Feature 2, ADR-0014)
+
+The extractor and its review dashboard ship **OFF**. The `/admin` route is already
+reverse-proxied by [`deploy/Caddyfile`](../../deploy/Caddyfile) and the dashboard is in the
+web build, so enabling it is env-only + a rebuild:
+
+```bash
+# on the VM, in deploy/.env.prod (gitignored — survives pulls):
+EXTRACTION_AGENT_ENABLED=true            # enables the extractor + dashboard write actions
+ADMIN_TOKEN=<a long random secret>       # REQUIRED on a public host; gates every /admin write
+
+cd ~/Project_OMNI && DC up -d --build    # rebuild picks up the flags
+```
+
+Then open **`https://<your-site>/#/admin`**, paste the `ADMIN_TOKEN` when prompted, and
+review candidates (usage: [design doc §Using the dashboard](../design/feature-2-literature-extraction.md#using-the-dashboard-operator-guide)).
+The token is the app-layer gate; for a second layer, wrap the `handle /admin/*` block in
+the Caddyfile with [`basic_auth`](https://caddyserver.com/docs/caddyfile/directives/basic_auth).
+**Never leave `ADMIN_TOKEN` empty with `EXTRACTION_AGENT_ENABLED=true` on a public box** —
+the backend logs a startup warning if you do. To try it with throwaway data, run
+`scripts/seed_demo_candidates.py` (see the design doc); `--clear` removes it.
+
 ### Update the deployment: **graph** changes (rarer — and it CLOBBERS)
 
 ⚠️ The cloud graph is ahead of your laptop's — the crawls run **on the cloud**, so it

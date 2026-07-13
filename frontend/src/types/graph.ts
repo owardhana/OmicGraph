@@ -113,6 +113,9 @@ export interface GraphEdge {
   role?: string | null; // CATALYSES: 'substrate' | 'product'
   reaction_id?: string | null; // CATALYSES: Recon3D reaction id
   source_db?: string | null;
+  // 'literature' = machine-proposed edge promoted from literature (ADR-0013);
+  // absent/null = canonical consortium data. Drives the "proposed" edge styling.
+  provenance_tier?: string | null;
   pmids: string[];
   citation_attempted: boolean;
 }
@@ -166,20 +169,6 @@ export interface EntitySearchResponse {
   has_more: boolean;
 }
 
-export interface QueryRequest {
-  question: string;
-  tissue?: string;
-  max_hops?: number;
-}
-
-export interface QueryResponse {
-  answer: string;
-  cypher: string;
-  results: Record<string, unknown>[];
-  citations: string[];
-  error?: string | null;
-}
-
 // react-force-graph runtime shapes (nodes/links gain simulation fields).
 export type FGNode = GraphNode & {
   x?: number;
@@ -199,4 +188,70 @@ export type FGLink = GraphEdge & {
 export interface ForceGraphData {
   nodes: FGNode[];
   links: FGLink[];
+}
+
+// --- Admin review dashboard (Feature 2 P3, ADR-0014) ---
+export type CandidateStatus = 'pending' | 'promoted' | 'rejected';
+
+export interface CandidateEndpoint {
+  id: string;
+  kind: string;
+  name: string;
+}
+
+export interface CandidateSummary {
+  triple_key: string;
+  rel_type: string;
+  symmetric: boolean;
+  subject: CandidateEndpoint;
+  object: CandidateEndpoint;
+  status: CandidateStatus;
+  confidence: number | null;
+  n_affirm: number | null;
+  n_negate: number | null;
+  first_seen: string | null;
+  last_seen: string | null;
+  promotion_kind: string | null;
+}
+
+export interface CandidateEvidence {
+  pmid: string;
+  sentence_span: string | null;
+  polarity: 'affirm' | 'negate' | 'hedge' | null;
+  model_conf: number | null;
+  model: string | null;
+  extracted_at: string | null;
+}
+
+export interface EndpointContext {
+  name?: string;
+  degree?: number;
+  summary?: string;
+}
+
+export interface CandidateDetail {
+  proposed_change: {
+    rel_type: string;
+    symmetric: boolean;
+    subject: CandidateEndpoint;
+    object: CandidateEndpoint;
+    would_be_action: 'MINT' | 'ENRICH' | null;
+  };
+  scoring: {
+    confidence: number | null;
+    n_affirm: number | null;
+    n_negate: number | null;
+    status: CandidateStatus;
+    first_seen: string | null;
+    last_seen: string | null;
+    promotion_kind: string | null;
+    promoted_at: string | null;
+  };
+  evidence: CandidateEvidence[];
+  endpoint_context: { subject: EndpointContext; object: EndpointContext };
+  agent_profiling: {
+    source_agent: string | null;
+    agent_version: string | null;
+    provenance_tier: string | null;
+  };
 }

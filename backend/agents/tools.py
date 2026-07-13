@@ -2,8 +2,9 @@
 
 The agentic chatbot is given these typed functions instead of only raw Cypher: the
 LLM picks a tool, we execute it against the live graph, and feed the (compact) result
-back. Every tool is READ-ONLY — same safety posture as QueryAgent (no writes, ever).
-``run_cypher`` keeps the Text2Cypher escape hatch but routes through validate_cypher.
+back. Every tool is READ-ONLY (no writes, ever). ``run_cypher`` is the raw
+NL-to-Cypher escape hatch for aggregations the typed tools can't express; it routes
+through ``validate_cypher`` (single-MATCH, read-only guard).
 
 Tool results are deliberately COMPACT (trimmed node fields, capped lists) to keep the
 agent's context — and token cost — bounded.
@@ -14,8 +15,9 @@ import json
 import logging
 
 from backend.db.neo4j_client import get_session
-from backend.db.queries.graph import search_entities
+from backend.db.queries.graph import search_entities, semantic_search_nodes
 from backend.db.queries.traversal import signal_decay_subgraph
+from backend.llm.client import embed_text
 from backend.llm.validators import validate_cypher
 
 logger = logging.getLogger(__name__)
@@ -114,6 +116,29 @@ async def _shortest_path(from_id: str, from_type: str, to_id: str,
     }
 
 
+async def _semantic_search(
+    query: str, kinds: list[str] | None = None, k: int = 5
+) -> dict:
+    """Meaning-based search: embed the query, then vector-search Gene/Protein/Disease
+    by cosine similarity (ADR-0008). Degrades to an empty result with a note when no
+    embeddings are populated yet."""
+    try:
+        vector = await embed_text(query)
+    except Exception as exc:  # noqa: BLE001
+        return {"error": f"could not embed query: {exc}"}
+    rows = await semantic_search_nodes(vector, kinds, k)
+    if not rows:
+        return {"results": [],
+                "note": "no semantic matches — embeddings may not be populated yet"}
+    return {
+        "results": [
+            {"kind": r["node_type"], "id": r["id"], "name": r["display_name"],
+             "score": round(r["score"], 3), "snippet": r["snippet"]}
+            for r in rows
+        ]
+    }
+
+
 async def _run_cypher(cypher: str) -> dict:
     if not await validate_cypher(cypher):
         return {"error": "query rejected — must be a single read-only (MATCH) query"}
@@ -190,6 +215,27 @@ TOOL_SCHEMAS: list[dict] = [
     {
         "type": "function",
         "function": {
+            "name": "semantic_search",
+            "description": "Find entities by MEANING/similarity rather than exact name. "
+                           "Use when the user describes a concept or function (e.g. "
+                           "'enzymes in glucose metabolism', 'diseases similar to "
+                           "Alzheimer's') instead of naming a specific entity. Searches "
+                           "Gene/Protein/Disease by embedding similarity.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string",
+                              "description": "concept/description to match by meaning"},
+                    "kinds": {"type": "array", "items": {"type": "string"},
+                              "description": "optional filter: gene/protein/disease"},
+                },
+                "required": ["query"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "run_cypher",
             "description": "Run a READ-ONLY Cypher query for aggregations/counts the "
                            "other tools can't express. Single MATCH query, no writes.",
@@ -206,6 +252,7 @@ _DISPATCH = {
     "search_graph": _search_graph,
     "get_subgraph": _get_subgraph,
     "shortest_path": _shortest_path,
+    "semantic_search": _semantic_search,
     "run_cypher": _run_cypher,
 }
 

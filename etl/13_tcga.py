@@ -205,7 +205,7 @@ def main() -> None:
 
     # --- 2. expression matrix (rows=genes, cols=samples), read as float32 ---
     header_cols = pd.read_csv(EXPR_FILE, sep="\t", nrows=0, index_col=0).columns
-    dtypes = {c: "float32" for c in header_cols}
+    dtypes = dict.fromkeys(header_cols, "float32")
     expr = pd.read_csv(EXPR_FILE, sep="\t", index_col=0, dtype=dtypes, low_memory=False)
     print(f"Expression matrix shape (genes x samples): {expr.shape}")
     expr.index = [_strip_ensembl_version(g) for g in expr.index]

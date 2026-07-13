@@ -44,7 +44,7 @@ ON CREATE SET r.source_db = 'GENCODE',
 
 
 def parse_attributes(attr_str: str) -> dict[str, str]:
-    return {k: v for k, v in _ATTR_RE.findall(attr_str)}
+    return dict(_ATTR_RE.findall(attr_str))
 
 
 def iter_transcript_rows():
