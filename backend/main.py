@@ -23,6 +23,7 @@ from backend.api.routes import (
 )
 from backend.config import settings
 from backend.db.neo4j_client import close_driver, create_indexes
+from backend.mcp_server import mcp as mcp_server
 
 CORS_ORIGINS = ["http://localhost:3000", "http://127.0.0.1:3000"]
 
@@ -79,6 +80,11 @@ app.include_router(transcripts.router)
 app.include_router(search.router)
 app.include_router(chat.router)
 app.include_router(admin.router)
+
+# Read-only MCP server (ADR-0017, Pillar 2): remote agents/clients reach the graph at
+# /mcp (behind Caddy). SSE transport; exposes only the bounded typed tools — never
+# run_cypher. YAGNI: no API-key / quota layer yet (arrives with the landing key flow).
+app.mount("/mcp", mcp_server.sse_app())
 
 
 @app.get("/health", tags=["health"])

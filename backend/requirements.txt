@@ -9,3 +9,4 @@ pydantic-settings
 pytest
 pytest-asyncio
 python-dotenv
+mcp  # MCP server for public read-only graph access (ADR-0017, backend/mcp_server.py)
