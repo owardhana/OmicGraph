@@ -70,11 +70,13 @@ async def get_gene_neighborhood(
     decay: float | None = None,
     min_signal: float | None = None,
     max_nodes: int | None = None,
+    compartment_filter: bool | None = None,
 ) -> dict:
     """Signal-decay subgraph seeded at one gene (ADR-0005)."""
     resolve_tissue_key(tissue)  # validate only; tissue does not gate traversal
     return await signal_decay_subgraph(
-        [ensembl_id], decay=decay, min_signal=min_signal, max_nodes=max_nodes
+        [ensembl_id], decay=decay, min_signal=min_signal, max_nodes=max_nodes,
+        compartment_filter=compartment_filter,
     )
 
 

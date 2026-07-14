@@ -28,6 +28,8 @@ _TRAVERSAL_REL_TYPES = [
     # Phase 3 (docs/data-architecture.md): TCGA differential expression edge
     # (Gene -> Disease) and the Recon3D enzymatic edge (Protein -> Metabolite).
     "DIFFERENTIALLY_EXPRESSED", "CATALYSES",
+    # Pillar 1c (ADR-0016): curated gene-disease edge from Open Targets.
+    "GENE_DISEASE_ASSOC",
 ]
 
 # Depth guard: signal decays by at most `decay` per hop, so it crosses any
@@ -81,6 +83,11 @@ def _base_conductance(rel_type: str, rel_props: dict) -> float:
         return min(1.0, abs(float(lfc)) / 4.0) if lfc is not None else 0.25
     if rel_type == "CATALYSES":
         return 0.7  # enzymatic link — moderately confident structural (ADR-0009)
+    if rel_type == "GENE_DISEASE_ASSOC":
+        # Curated gene-disease (ADR-0016): scored by Open Targets datasource confidence,
+        # conducts like a strong IMPLICATED_IN.
+        s = rel_props.get("gda_score")
+        return min(1.0, 0.5 + float(s) / 2.0) if s is not None else 0.6
     return settings.STRUCTURAL_CONDUCTANCE
 
 
@@ -100,7 +107,7 @@ def _base_conductance(rel_type: str, rel_props: dict) -> float:
 # regulatory story still reads; the rest use STRING_MAX_EXPAND_PER_NODE.
 _DENSE_CAPPED = {
     "INTERACTS_WITH", "ASSOCIATED_WITH", "IN_GENE", "IMPLICATED_IN",
-    "DIFFERENTIALLY_EXPRESSED", "REGULATES",
+    "DIFFERENTIALLY_EXPRESSED", "REGULATES", "GENE_DISEASE_ASSOC",
 }
 
 
@@ -163,6 +170,8 @@ def _edge_rank(rel_type: str, rel_props: dict) -> float:
         return abs(float(lfc)) if lfc is not None else 0.0  # strongest fold-change first
     if rel_type == "REGULATES":
         return props.get("confidence") or 0.0  # highest-confidence DoRothEA targets first
+    if rel_type == "GENE_DISEASE_ASSOC":
+        return props.get("gda_score") or 0.0  # strongest curated associations first
     return 0.0  # IN_GENE / IMPLICATED_IN: structural rollup, no score -> first-k
 
 
@@ -249,11 +258,24 @@ def _node_kind(label: str) -> str:
     }.get(label, label.lower())
 
 
+def _shares_compartment(a: dict, b: dict) -> bool:
+    """Whether two proteins share a subcellular compartment (ADR-0015). Used to gate
+    INTERACTS_WITH when the compartment-aware PPI filter is on. Proteins with unknown
+    localization (empty ``subcellular_locs``) are treated as compatible — the filter
+    removes *contradictions*, not un-annotated proteins (conservative)."""
+    la = set(a.get("subcellular_locs") or [])
+    lb = set(b.get("subcellular_locs") or [])
+    if not la or not lb:
+        return True
+    return bool(la & lb)
+
+
 async def signal_decay_subgraph(
     seed_keys: list[str],
     decay: float | None = None,
     min_signal: float | None = None,
     max_nodes: int | None = None,
+    compartment_filter: bool | None = None,
 ) -> dict:
     """Ring-batched signal-decay expansion from the given seed node keys.
 
@@ -264,6 +286,9 @@ async def signal_decay_subgraph(
     decay = settings.TRAVERSAL_DECAY if decay is None else decay
     min_signal = settings.TRAVERSAL_MIN_SIGNAL if min_signal is None else min_signal
     max_nodes = settings.TRAVERSAL_MAX_NODES if max_nodes is None else max_nodes
+    compartment_filter = (
+        settings.COMPARTMENT_PPI_FILTER if compartment_filter is None else compartment_filter
+    )
 
     signal: dict[str, float] = {}
     node_payload: dict[str, dict] = {}  # eid -> {label, props, key}
@@ -391,6 +416,16 @@ async def signal_decay_subgraph(
                 new_sig = signal[row["from_eid"]] * decay * cond
                 if new_sig < min_signal:
                     continue
+                # Compartment-aware PPI (ADR-0015): drop an INTERACTS_WITH edge whose two
+                # proteins share no subcellular compartment (unknown loc = kept).
+                if (
+                    compartment_filter
+                    and row["rel_type"] == "INTERACTS_WITH"
+                    and not _shares_compartment(
+                        node_payload[row["from_eid"]]["props"], row["nb_props"]
+                    )
+                ):
+                    continue
                 nb = _record_node(row)
                 if new_sig > signal.get(nb, 0.0):
                     signal[nb] = new_sig
@@ -457,5 +492,15 @@ async def signal_decay_subgraph(
         }
         for ed in edges.values()
         if ed["src_eid"] in kept and ed["tgt_eid"] in kept
+        # Compartment-aware PPI (ADR-0015): also hide displayed INTERACTS_WITH between
+        # kept proteins that share no compartment — the expansion gate alone can't, since
+        # both endpoints may already be present via other paths.
+        and (
+            not compartment_filter
+            or ed["rel_type"] != "INTERACTS_WITH"
+            or _shares_compartment(
+                node_payload[ed["src_eid"]]["props"], node_payload[ed["tgt_eid"]]["props"]
+            )
+        )
     ]
     return {"nodes": nodes, "edges": out_edges}

@@ -88,8 +88,8 @@ async def _search_graph(query: str, types: list[str] | None = None) -> dict:
     }
 
 
-async def _get_subgraph(seed_ids: list[str]) -> dict:
-    raw = await signal_decay_subgraph(seed_ids)
+async def _get_subgraph(seed_ids: list[str], compartment_filter: bool = False) -> dict:
+    raw = await signal_decay_subgraph(seed_ids, compartment_filter=compartment_filter)
     if not raw["nodes"]:
         return {"error": f"no entity resolved for seeds {seed_ids}"}
     return _compact_graph(raw)

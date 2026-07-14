@@ -62,6 +62,12 @@ class Settings(BaseSettings):
     # never hardcode thresholds in ETL or traversal code.
     STRING_MIN_CONFIDENCE: float = 0.95  # STRING PPI combined_score threshold (~101k edges, full proteome)
     STRING_MAX_EXPAND_PER_NODE: int = 10  # max INTERACTS_WITH neighbours per frontier step
+    # Compartment-aware PPI (ADR-0015): when true, traversal only crosses an
+    # INTERACTS_WITH edge if the two proteins SHARE a subcellular compartment
+    # (Protein.subcellular_locs, loaded by 17_location). Proteins with unknown
+    # localization are never filtered out (conservative). Default off; a per-request
+    # override + a frontend toggle expose it to users.
+    COMPARTMENT_PPI_FILTER: bool = False
     # REGULATES is now dense-capped too (a hub TF regulates hundreds of genes and was
     # flooding gene-seeded views, starving the molecular backbone). Higher than the
     # STRING cap so the regulatory story still reads; top-k by DoRothEA confidence.

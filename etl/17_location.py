@@ -53,6 +53,12 @@ SIDES = [
 WRITE_BATCH = 1000
 SOURCE_DB = "ComPPI"
 SOURCE_VERSION = "2.1.1_loc_all"
+# ComPPI over-annotates (a protein often lists 5-6 compartments incl. an "N/A"
+# pseudo-compartment), which makes the compartment-aware PPI filter (ADR-0015) useless —
+# every pair overlaps. Keep only real compartments and the protein's top-scoring few, so
+# the stored set reflects confident primary localization.
+_NOISE_LOCS = {"n/a", "unknown", "na", ""}
+MAX_LOCS_PER_PROTEIN = 3
 
 SET_QUERY = """
 UNWIND $rows AS r
@@ -120,7 +126,10 @@ def main() -> None:
     # Build index-aligned parallel arrays (locs sorted by descending score, then name).
     rows = []
     for uid, locs in prot_locs.items():
-        ordered = sorted(locs.items(), key=lambda kv: (-kv[1], kv[0]))
+        clean = {k: v for k, v in locs.items() if k.strip().lower() not in _NOISE_LOCS}
+        ordered = sorted(clean.items(), key=lambda kv: (-kv[1], kv[0]))[:MAX_LOCS_PER_PROTEIN]
+        if not ordered:
+            continue
         rows.append({
             "uniprot": uid,
             "locs": [loc for loc, _ in ordered],

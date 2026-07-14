@@ -40,6 +40,7 @@ async def get_gene_graph(
     min_signal: float | None = None,
     decay: float | None = None,
     max_nodes: int | None = None,
+    compartment_filter: bool = False,
 ):
     """Signal-decay subgraph around a gene (ADR-0005). All traversal params are
     optional and fall back to configured defaults, so a paramless call works.
@@ -51,7 +52,8 @@ async def get_gene_graph(
     ensembl_id = record["props"]["ensembl_id"]
     try:
         raw = await gene_queries.get_gene_neighborhood(
-            ensembl_id, tissue, decay=decay, min_signal=min_signal, max_nodes=max_nodes
+            ensembl_id, tissue, decay=decay, min_signal=min_signal, max_nodes=max_nodes,
+            compartment_filter=compartment_filter,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -64,6 +66,7 @@ async def get_disease_graph(
     min_signal: float | None = None,
     decay: float | None = None,
     max_nodes: int | None = None,
+    compartment_filter: bool = False,
 ):
     """Signal-decay subgraph seeded at a Disease node (ADR-0007): the signal
     flows Disease -> Variant (ASSOCIATED_WITH) -> Gene (IN_GENE) -> Protein /
@@ -74,6 +77,7 @@ async def get_disease_graph(
             status_code=404, detail=f"Disease '{ontology_id}' not found"
         )
     raw = await signal_decay_subgraph(
-        [ontology_id], decay=decay, min_signal=min_signal, max_nodes=max_nodes
+        [ontology_id], decay=decay, min_signal=min_signal, max_nodes=max_nodes,
+        compartment_filter=compartment_filter,
     )
     return models.graph_response_from_raw(raw, settings.tissues)

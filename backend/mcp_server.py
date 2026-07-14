@@ -51,10 +51,12 @@ async def semantic_search(query: str, kinds: list[str] | None = None) -> dict:
 
 
 @mcp.tool()
-async def get_subgraph(seed_ids: list[str]) -> dict:
+async def get_subgraph(seed_ids: list[str], compartment_filter: bool = False) -> dict:
     """Signal-decay neighbourhood around one or more seed ids — what an entity connects
-    to. Bounded by the traversal max_nodes cap; returns compact node/edge summaries."""
-    return await _get_subgraph(seed_ids)
+    to. Bounded by the traversal max_nodes cap; returns compact node/edge summaries.
+    ``compartment_filter=true`` keeps only protein-protein interactions whose partners
+    share a subcellular compartment (ADR-0015)."""
+    return await _get_subgraph(seed_ids, compartment_filter)
 
 
 @mcp.tool()
