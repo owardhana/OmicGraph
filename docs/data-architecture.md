@@ -91,6 +91,10 @@ log a `DataSource` node with version + record count.
 | 13 | Recon3D v3.04 (`.mat` COBRA model) | MATLAB | ~60 MB | CC BY 4.0 | `etl/14_metabolomics.py` |
 | 14 | HMDB metabolite IDs | ZIP (XML) | ~6.4 GB unzipped | Free for academic | `etl/14_metabolomics.py` |
 | 15 | ENCODE cCRE Registry V4 | BED.gz + TSV | ~30 MB BED | CC0 | `etl/15_encode.py` *(gated — see roadmap)* |
+| 16 | gnomAD v4 variant AF (Ensembl REST) | REST API | API calls | CC0 public | `etl/16_gnomad_af.py` |
+| 17 | ComPPI (H. sapiens, integrates HPA + LOCATE + 6) | TSV (gzip) | ~36 MB | Free academic | `etl/17_location.py` (ADR-0015) |
+| 18 | Reactome (UniProt2Reactome) + MSigDB C5 GO:BP | TXT + GMT | ~45 MB | Reactome CC0 / MSigDB free academic | `etl/18_pathways.py` (ADR-0015) |
+| 19 | Open Targets 26.06 curated evidence (clingen / gene2phenotype / genomics_england / orphanet) | Parquet ×4 | ~7 MB | CC0 public | `etl/19_opentargets.py` (ADR-0016) |
 
 ---
 
@@ -116,6 +120,11 @@ error before the next starts.
 13_tcga          → DIFFERENTIALLY_EXPRESSED edges (Gene → Disease)
 14_metabolomics  → Metabolite nodes + CATALYSES edges (Protein → Metabolite)
 15_encode        → cCRE nodes + BINDS + REGULATES_VIA   ← GATED: AuraDB only
+16_gnomad_af     → enriches Variant nodes (gnomad_af; Ensembl REST, resumable)
+17_location      → enriches Protein nodes (subcellular_locs + scores; ComPPI) — ADR-0015
+18_pathways      → enriches Protein (reactome_pathways) + Gene (go_bp_terms) — ADR-0015
+19_opentargets   → GENE_DISEASE_ASSOC edges (Gene → Disease, curated) — ADR-0016
+                   (reference/build_efo_xref.py builds the one-time efo_xref.tsv crosswalk)
 
 Background agents (run independently of the ETL pipeline):
   EmbeddingAgent   → reads *.summary_text/description, writes *.embedding
@@ -150,6 +159,7 @@ Background agents (run independently of the ETL pipeline):
 | `pli_score` | `gnomad_v4_constraint.tsv` | `lof.pLI` | Prefer MANE Select; matched by `hgnc_symbol` |
 | `cancer_gene` | COSMIC CGC CSV | `Gene Symbol` (presence) | `True` if in Census; never `False` (null = not checked) |
 | `cosmic_tier` | COSMIC CGC CSV | `Tier` | `"1"` or `"2"` |
+| `go_bp_terms` | MSigDB C5 GO:BP (`18_pathways.py`) | `.gmt` gene-set membership (inverted) | List of readable GO:BP process names (ADR-0015) |
 | `embedding` | EmbeddingAgent | `summary_text` | `text-embedding-3-small`, 1536-dim |
 | `source_db` | `01_hgnc.py` | — | `"HGNC"` |
 
@@ -173,7 +183,10 @@ Background agents (run independently of the ETL pipeline):
 | `hgnc_symbol` | source Gene node | — | Copied at creation |
 | `subtype` | `05_proteins.py` / `06_uniprot_enrich.py` | UniProt GO cross-refs | See GO subtype map below |
 | `summary_text` | UniProt REST | `comments[FUNCTION].texts[0].value` | First functional description; 1 req/s |
-| `subcellular_loc` | UniProt REST | `comments[SUBCELLULAR LOCATION]…location.value` | First location |
+| `subcellular_loc` | UniProt REST | `comments[SUBCELLULAR LOCATION]…location.value` | First location (legacy single value) |
+| `subcellular_locs` | ComPPI (`17_location.py`) | `Major Loc … With Loc Score` | Multi-value compartment set, ~6 GO-CC vocab (ADR-0015) |
+| `subcellular_loc_scores` | ComPPI (`17_location.py`) | same | Per-compartment confidence, index-aligned with `subcellular_locs` |
+| `reactome_pathways` | Reactome (`18_pathways.py`) | UniProt2Reactome pathway names (human) | List of pathway names |
 | `go_terms` | UniProt REST | `crossReferences[GO].id` | List of GO IDs |
 | `molecular_weight` | UniProt REST | `sequence.molWeight` | Integer, Daltons |
 | `embedding` | EmbeddingAgent | `summary_text` | 1536-dim |
@@ -297,6 +310,22 @@ Disease). **Caveat:** median cohort DE is simplified (subtype changes wash out;
 publication-grade work needs DESeq2/edgeR on counts) — sufficient for directional
 signal traversal.
 
+### GENE_DISEASE_ASSOC (Gene → Disease)
+| Field | Source | Notes |
+|-------|--------|-------|
+| `gda_score` | Open Targets datasource score | max across the curated evidence for the pair |
+| `ot_datasources` | OT `datasourceId` | contributing curated sources (clingen / gene2phenotype / genomics_england / orphanet) |
+| `n_evidence` | `19_opentargets.py` | evidence-record count for the pair |
+| `source_db` / `source_version` | `19_opentargets.py` | `"OpenTargets"` / `"26.06"` |
+
+Curated gene-disease evidence (ADR-0016), a third *orthogonal* class alongside GWAS
+`IMPLICATED_IN` (statistical) and TCGA `DIFFERENTIALLY_EXPRESSED` (expression). Disease is
+matched **EFO-native** (OT diseaseId → existing EFO Disease node, optionally via the
+`reference/efo_xref.tsv` crosswalk); pairs whose gene or disease is absent are dropped
+(never minted). **Coverage caveat:** OT curated diseases are MONDO-centric rare/mendelian
+conditions while the graph's Disease set is GWAS-derived (EFO/OBA), so overlap — not
+vocabulary — bounds the edge count (~2.2k). Conductance ≈ a strong `IMPLICATED_IN`.
+
 ### CATALYSES (Protein → Metabolite)
 | Field | Source | Notes |
 |-------|--------|-------|
@@ -337,6 +366,7 @@ present via a backbone pre-pass ([ADR-0011](adr/0011-backbone-guaranteed-travers
 | `IN_GENE` / `IMPLICATED_IN` | ~1.0 / 0.5 | structural / rollup; dense-capped |
 | `DIFFERENTIALLY_EXPRESSED` | `min(1.0, abs(log2fc)/4.0)` | dense-capped |
 | `CATALYSES` | 0.7 (fixed) | not capped; metabolites are leaves (ADR-0011) |
+| `GENE_DISEASE_ASSOC` | `0.5 + gda_score/2` (0.5–1.0) | curated gene-disease (ADR-0016); dense-capped |
 
 ---
 
@@ -382,6 +412,8 @@ any of these in ETL or traversal code.**
 | `DOROTHEA_MIN_CONFIDENCE` | `A,B` | DoRothEA confidence tiers loaded |
 | `STRING_MIN_CONFIDENCE` | `0.95` | STRING PPI threshold (0.95 ≈ 101k edges over full proteome; 0.9 roughly doubles it) |
 | `STRING_MAX_EXPAND_PER_NODE` | `10` | Hub-protein traversal cap per frontier step |
+| `COMPARTMENT_PPI_FILTER` | `false` | Compartment-aware PPI: only cross `INTERACTS_WITH` if partners share a subcellular compartment (ADR-0015); per-request override + frontend toggle |
+| `ADMIN_FAIL_CLOSED` | `false` | Fail-closed admin: empty `ADMIN_TOKEN` refuses `/admin` (503) instead of open (ADR-0017); set true in prod |
 | `REGULATES_MAX_EXPAND_PER_NODE` | `25` | Hub-TF traversal cap per frontier step (ADR-0010) |
 | `BACKBONE_MAX_METABOLITES_PER_PROTEIN` | `25` | Cap on pinned backbone metabolites per protein (ADR-0011) |
 | `METABOLITE_BRIDGE_ENABLED` | `false` | Opt-in metabolite→co-catalysing-protein bridge (ADR-0012) |

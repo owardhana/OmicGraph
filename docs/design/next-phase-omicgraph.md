@@ -2,8 +2,13 @@
 
 Plan for the phase after the literature-extraction MVP. Developed via a
 grill-with-docs session against [CONTEXT.md](../../CONTEXT.md),
-[vision-and-mvp.md](../vision-and-mvp.md), and the ADRs. **This document is the plan
-only — no ETL/frontend code is built by the planning session.**
+[vision-and-mvp.md](../vision-and-mvp.md), and the ADRs.
+
+> **Status: BUILT** on `feat/omicgraph-next-phase` — all three pillars shipped + verified,
+> plus follow-ups (#10 compartment filter built; #9 crosswalk investigated + rejected). See
+> [roadmap.md](../roadmap.md#omicgraph-next-phase--built) for the delivered summary. One
+> notable change from plan: **DisGeNET → Open Targets** for curated gene-disease (open +
+> EFO-native — [ADR-0016](../adr/0016-disgenet-curated-gene-disease.md)).
 
 Decisions of record surfaced here:
 [ADR-0015](../adr/0015-enrichment-as-annotations.md) (enrichment as annotations),

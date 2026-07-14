@@ -72,6 +72,15 @@ Concretely:
 - Reversible: an annotation can be **promoted** to a node later if a first-class "list
   all proteins in compartment X" query is ever required — the property is a strict
   subset of that capability.
+- **Compartment-aware PPI filter — built, but data-limited (task #10).** `COMPARTMENT_PPI_FILTER`
+  (env) + a per-request `?compartment_filter` override + MCP param gate `INTERACTS_WITH` on
+  shared `subcellular_locs`, in both expansion and display. Verified correct
+  (nucleus∩mito → dropped; unknown-loc → kept). **But ComPPI scores cytosol+nucleus highest
+  for nearly every protein**, so almost all interacting pairs overlap and the filter rarely
+  removes an edge in practice (17_location caps to top-3 and drops the `N/A` pseudo-loc to
+  reduce this, but the two dominant compartments remain). Meaningful discrimination needs a
+  stricter localization source — **HPA "Main location"** (the raw file is already in
+  `data/raw/`) — a data follow-up; the mechanism is done.
 
 ## Rejected alternatives
 

@@ -94,16 +94,29 @@ laptop contention, so the always-on box is their proper home. Both are resumable
 - **gnomAD AF backfill** — `16_gnomad_af.py` populating `Variant.gnomad_af` over ~325k
   rs-variants (~11% at cutover; the long pole, ~1–1.5 days; ClinVar-significant first).
 
-## Next phase (planned) — OmicGraph
+## OmicGraph next phase — BUILT
 
-Rename OmniGraph → **OmicGraph** + three enrichment sources (subcellular localization,
-pathway/GO annotations, DisGeNET curated gene-disease), a public MCP server + security
-hardening, and a frontend refinement (landing front-door, tabbed Entity Inspector,
-scientific visual pass). Full plan + sequencing:
-[`docs/design/next-phase-omicgraph.md`](design/next-phase-omicgraph.md). Decisions:
-[ADR-0015](adr/0015-enrichment-as-annotations.md) (enrichment as annotations),
-[ADR-0016](adr/0016-disgenet-curated-gene-disease.md) (DisGeNET),
-[ADR-0017](adr/0017-public-access-model.md) (public access model).
+Rename OmniGraph → **OmicGraph** + this phase's work, all shipped on
+`feat/omicgraph-next-phase`. Plan: [`docs/design/next-phase-omicgraph.md`](design/next-phase-omicgraph.md).
+
+- **Pillar 1 — data enrichment** (all annotations, not new node kinds — ADR-0015/0016):
+  - `17_location` — `Protein.subcellular_locs` + scores from ComPPI (16,985 proteins).
+  - `18_pathways` — `Protein.reactome_pathways` (11,306) + `Gene.go_bp_terms` (18,117).
+  - `19_opentargets` — `GENE_DISEASE_ASSOC` curated gene-disease from Open Targets 26.06
+    (2,213 edges; DisGeNET dropped for access — Open Targets is open + EFO-native, ADR-0016).
+- **Pillar 2 — access + security** (ADR-0017): admin **fail-closed**, 60s Neo4j tx-timeout,
+  read-only **MCP server at `/mcp`** (search / semantic / subgraph / shortest-path + bounded
+  export; no `run_cypher`).
+- **Pillar 3 — frontend:** tabbed **Entity Inspector** (Overview / Interactions / Annotations
+  / Disease / Regulation / Metabolism / Literature), **landing front-door** (`/#/app`),
+  Fira type.
+- **Follow-ups:** #10 **compartment-aware PPI filter** built (`COMPARTMENT_PPI_FILTER` +
+  per-request `?compartment_filter`; ADR-0015). #9 OT→EFO crosswalk **investigated and
+  rejected** — the coverage limit is disease-set overlap, not vocabulary (ADR-0016 §Consequences).
+
+Decisions: [ADR-0015](adr/0015-enrichment-as-annotations.md) ·
+[ADR-0016](adr/0016-disgenet-curated-gene-disease.md) ·
+[ADR-0017](adr/0017-public-access-model.md).
 
 ## Deferred / optional
 

@@ -54,7 +54,12 @@ No single existing system has all five.
 - **Phenotype:** Disease (EFO) as first-class nodes ([ADR-0007](adr/0007-disease-as-first-class-nodes.md)).
 - Edges: `REGULATES`, `PRODUCES`, `TRANSLATES_TO`/`ENCODES`, `INTERACTS_WITH`,
   `IN_GENE`, `ASSOCIATED_WITH`, `IMPLICATED_IN`, `DIFFERENTIALLY_EXPRESSED`,
-  `CATALYSES`.
+  `CATALYSES`, `GENE_DISEASE_ASSOC` (curated, Open Targets — ADR-0016).
+- **Annotations** (ADR-0015): scored subcellular localization (`subcellular_locs`),
+  Reactome pathways, GO:BP terms — surfaced in the inspector's Annotations tab; a
+  compartment-aware PPI filter gates `INTERACTS_WITH`.
+- **Read-only MCP server** at `/mcp` (ADR-0017) — search / semantic / subgraph /
+  shortest-path + bounded export for external agents; no raw Cypher.
 - Signal-decay traversal ([ADR-0005](adr/0005-signal-decay-traversal.md),
   [ADR-0011](adr/0011-backbone-guaranteed-traversal.md)), tissue-as-opacity
   ([ADR-0006](adr/0006-tissue-as-visual-channel.md)), an agentic chat assistant

@@ -52,7 +52,17 @@ better source for the same need:
   fallback / spot-check, not the ETL path (topology comes from files — §2).
 - `GENE_DISEASE_ASSOC` needs a conductance entry (curated → comparable to a strong
   `IMPLICATED_IN`; exact value in the traversal pass).
-- Coverage is bounded to diseases already present (GWAS/EFO-derived) — accepted.
+- Coverage is bounded to diseases already present (GWAS/EFO-derived) — accepted. ~2,213
+  edges from ~19,560 curated pairs (≈88% dropped).
+- **Crosswalk investigated and rejected (task #9).** OT curated diseases are MONDO-centric
+  (~15k pairs) vs the graph's EFO/OBA Disease set, so a MONDO→EFO crosswalk seemed like it
+  would lift coverage. Built one from `efo.json` xrefs and measured: EFO *imports* MONDO as
+  its own nodes rather than cross-referencing it, so the map held only ~195 MONDO→EFO
+  entries; applying it translated 285/64,150 rows and *reduced* edges (2,213→2,176), because
+  translating a graph-present MONDO id to a graph-absent EFO id drops the match. **The real
+  ceiling is disease-set overlap, not vocabulary** — OT curated rare/mendelian diseases
+  mostly aren't in a GWAS-common-variant graph, and minting them is rejected above. A
+  materially better lift would need a different disease-source, not a crosswalk.
 
 ## Rejected alternatives
 
