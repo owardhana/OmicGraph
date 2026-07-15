@@ -421,3 +421,12 @@
 .admin-gate-card .admin-input {
   width: 100%;
 }
+.admin-gate-card .admin-back {
+  display: inline-block;
+  margin-bottom: 14px;
+}
+.admin-gate-error {
+  color: #c0392b;
+  font-size: 12.5px;
+  margin: 10px 0 0 !important;
+}

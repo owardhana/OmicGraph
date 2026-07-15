@@ -23,12 +23,23 @@ const SORTS: { key: string; label: string }[] = [
 const arrow = (symmetric: boolean) => (symmetric ? '↔' : '→');
 const conf = (c: number | null | undefined) => (c == null ? '—' : c.toFixed(2));
 
-/** Token gate — shown when the API returns 401. Saves to localStorage, then retries. */
-function TokenGate({ onSaved }: { onSaved: () => void }) {
+/** Token gate — the entry screen for #/admin. It is shown *before* any admin call is
+ * made when no token is stored, and again (with `error`) when the server rejects a
+ * token. Saves to localStorage, then retries. Real enforcement is server-side: the
+ * /admin router requires this value as X-Admin-Token (ADR-0014/0017). */
+function TokenGate({ error, onSaved }: { error: string | null; onSaved: () => void }) {
   const [value, setValue] = useState(getAdminToken());
+  const submit = () => {
+    if (!value.trim()) return; // never submit an empty token
+    setAdminToken(value.trim());
+    onSaved();
+  };
   return (
     <div className="admin-gate">
       <div className="admin-gate-card">
+        <a className="admin-back" href="#/">
+          ← Graph
+        </a>
         <h2>Admin access</h2>
         <p className="admin-muted">
           This surface promotes trusted topology. Enter the <code>ADMIN_TOKEN</code>{' '}
@@ -38,22 +49,15 @@ function TokenGate({ onSaved }: { onSaved: () => void }) {
           className="admin-input"
           type="password"
           placeholder="ADMIN_TOKEN"
+          autoFocus
           value={value}
           onChange={(e) => setValue(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === 'Enter') {
-              setAdminToken(value);
-              onSaved();
-            }
+            if (e.key === 'Enter') submit();
           }}
         />
-        <button
-          className="admin-btn admin-btn-primary"
-          onClick={() => {
-            setAdminToken(value);
-            onSaved();
-          }}
-        >
+        {error && <p className="admin-gate-error">{error}</p>}
+        <button className="admin-btn admin-btn-primary" onClick={submit}>
           Unlock
         </button>
       </div>
@@ -72,18 +76,33 @@ export default function AdminDashboard() {
   const [list, setList] = useState<CandidateSummary[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
   const [detail, setDetail] = useState<CandidateDetail | null>(null);
-  const [authNeeded, setAuthNeeded] = useState(false);
+  // Gate up-front: with no stored token, show the token screen before any admin fetch
+  // (no ungated request, no dashboard flash). The server enforces the token regardless.
+  const [authNeeded, setAuthNeeded] = useState(() => !getAdminToken());
+  const [gateError, setGateError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [flash, setFlash] = useState<string | null>(null);
 
   const handleErr = (e: unknown) => {
-    if (e instanceof AdminAuthError) setAuthNeeded(true);
-    else setError(String(e instanceof Error ? e.message : e));
+    if (e instanceof AdminAuthError) {
+      setAuthNeeded(true);
+      // Only call it "invalid" once a token was actually submitted; the first view
+      // (no token yet) shows the gate's neutral prompt, not an error.
+      setGateError(
+        getAdminToken()
+          ? 'Invalid token — check the ADMIN_TOKEN set on the server.'
+          : null,
+      );
+    } else setError(String(e instanceof Error ? e.message : e));
   };
 
   const loadList = useCallback(async () => {
     setError(null);
+    if (!getAdminToken()) {
+      setAuthNeeded(true);
+      return; // no token → show the gate, never fire an ungated admin request
+    }
     try {
       const rows = await adminApi.listCandidates(tab, sort);
       setList(rows);
@@ -137,8 +156,10 @@ export default function AdminDashboard() {
   if (authNeeded) {
     return (
       <TokenGate
+        error={gateError}
         onSaved={() => {
           setAuthNeeded(false);
+          setGateError(null);
           setError(null);
           loadList();
         }}

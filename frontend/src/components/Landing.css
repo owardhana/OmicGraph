@@ -2,13 +2,18 @@
    the inverse of the in-app light panels; saturated colour reserved for the layer
    accents, consistent with the "colour = biology" rule. */
 .landing {
-  min-height: 100dvh;
+  /* #root is height:100%/overflow:hidden for the full-viewport 3D app, so the
+     landing owns its own vertical scroll (else the sections below the hero are
+     clipped and unreachable). */
+  height: 100%;
+  min-height: 100%;
   background: var(--canvas, #1a1a18);
   color: #f2efe8;
   font-family: 'Fira Sans', system-ui, -apple-system, sans-serif;
   display: flex;
   flex-direction: column;
   overflow-x: hidden;
+  overflow-y: auto;
 }
 
 .landing a { color: inherit; text-decoration: none; }

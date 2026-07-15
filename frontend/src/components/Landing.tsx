@@ -31,7 +31,7 @@ export default function Landing() {
         <span className="landing-wordmark">OmicGraph</span>
         <nav className="landing-nav-links">
           <a href="#/app">Explore</a>
-          <a href="#mcp">API</a>
+          <a href="#/api">API</a>
           <button className="landing-admin-link" onClick={() => setAdminOpen((v) => !v)}>
             Admin
           </button>
@@ -63,7 +63,7 @@ export default function Landing() {
             <button className="btn-primary" onClick={() => go('#/app')}>
               Launch OmicGraph
             </button>
-            <a className="btn-ghost" href="#mcp">
+            <a className="btn-ghost" href="#/api">
               Developer API
             </a>
           </div>
@@ -89,11 +89,12 @@ export default function Landing() {
       </main>
 
       <section id="mcp" className="landing-mcp">
-        <h2>Programmatic access — MCP</h2>
+        <h2>Programmatic access</h2>
         <p>
-          OmicGraph exposes a read-only <strong>Model Context Protocol</strong> server so
-          agents and scripts can query the graph directly: entity search, semantic search,
-          signal-decay neighbourhoods, shortest paths, and bounded subgraph export.
+          OmicGraph exposes a read-only <strong>Model Context Protocol</strong> server and
+          a <strong>REST API</strong> so agents and scripts can query the graph directly:
+          entity search, semantic search, signal-decay neighbourhoods, shortest paths, and
+          bounded subgraph export.
         </p>
         <ul className="mcp-tools">
           <li><code>search_graph</code></li>
@@ -106,6 +107,9 @@ export default function Landing() {
           Read-only and rate-limited. Raw Cypher is not exposed. Whole-graph downloads are
           served as versioned data releases, not live endpoints.
         </p>
+        <a className="btn-ghost" href="#/api">
+          Read the API docs →
+        </a>
       </section>
 
       <footer className="landing-footer">

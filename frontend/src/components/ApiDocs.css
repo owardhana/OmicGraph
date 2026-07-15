@@ -1,0 +1,287 @@
+/* Developer API docs (#/api). Same dark warm-charcoal canvas + Fira pairing as the
+   landing front-door — a continuous product surface. Saturation stays reserved for
+   the node-kind dots (colour = biology). */
+.apidocs {
+  /* #root is height:100%/overflow:hidden for the full-viewport 3D app, so this
+     document-style page owns its own scroll rather than the window. */
+  height: 100%;
+  overflow-y: auto;
+  background: var(--canvas, #1a1a18);
+  color: #f2efe8;
+  font-family: 'Fira Sans', system-ui, -apple-system, sans-serif;
+  display: flex;
+  flex-direction: column;
+}
+/* section anchors clear the sticky nav when scrolled to */
+.apidocs-hero,
+.apidocs-section { scroll-margin-top: 68px; }
+.apidocs a { color: inherit; text-decoration: none; }
+.apidocs code {
+  font-family: 'Fira Code', ui-monospace, monospace;
+}
+
+/* --- nav --- */
+.apidocs-nav {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 32px;
+  background: rgba(26, 26, 24, 0.86);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+.apidocs-wordmark { font-weight: 700; font-size: 19px; letter-spacing: -0.01em; }
+.apidocs-nav-links {
+  display: flex;
+  align-items: center;
+  gap: 22px;
+  font-size: 14px;
+  color: #b8b4aa;
+}
+.apidocs-nav-links a:hover { color: #f2efe8; }
+
+/* --- layout --- */
+.apidocs-main {
+  flex: 1;
+  width: 100%;
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 0 32px 40px;
+}
+.apidocs-section {
+  padding: 40px 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+.apidocs-section h2 { font-size: 26px; margin: 0 0 8px; letter-spacing: -0.01em; }
+.apidocs-section h3 {
+  font-size: 15px;
+  margin: 28px 0 12px;
+  color: #d8d4ca;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.apidocs-section > p { font-size: 15px; line-height: 1.65; color: #b8b4aa; max-width: 68ch; }
+.apidocs-section code {
+  font-size: 0.86em;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 5px;
+  padding: 1px 6px;
+  color: #e6e2d8;
+}
+
+/* --- hero --- */
+.apidocs-hero { padding: 56px 0 40px; }
+.apidocs-eyebrow {
+  font-family: 'Fira Code', monospace;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: #7db3ff;
+}
+.apidocs-hero h1 {
+  font-size: clamp(2rem, 4.5vw, 3rem);
+  line-height: 1.08;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  margin: 10px 0 18px;
+}
+.apidocs-lede { font-size: 17px; line-height: 1.65; color: #b8b4aa; max-width: 66ch; }
+.apidocs-lede strong, .apidocs-section p strong { color: #f2efe8; font-weight: 600; }
+.apidocs-callout {
+  margin-top: 24px;
+  padding: 16px 18px;
+  background: rgba(125, 179, 255, 0.06);
+  border: 1px solid rgba(125, 179, 255, 0.18);
+  border-radius: 10px;
+  font-size: 13.5px;
+  line-height: 1.6;
+  color: #c9c5ba;
+}
+.apidocs-callout code {
+  background: rgba(255, 255, 255, 0.08);
+  border: none;
+  padding: 1px 5px;
+}
+.apidocs-mini {
+  font-family: 'Fira Code', monospace;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #8a8780;
+  margin: 0 0 8px;
+}
+
+/* --- code blocks --- */
+.code-block {
+  position: relative;
+  margin: 6px 0 4px;
+  background: #12120f;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  overflow: hidden;
+}
+.code-block pre {
+  margin: 0;
+  padding: 16px 18px;
+  overflow-x: auto;
+}
+.code-block code {
+  font-family: 'Fira Code', ui-monospace, monospace;
+  font-size: 13px;
+  line-height: 1.6;
+  color: #d8e0d0;
+  background: none;
+  border: none;
+  padding: 0;
+  white-space: pre;
+}
+.code-lang {
+  position: absolute;
+  top: 10px;
+  left: 14px;
+  font-family: 'Fira Code', monospace;
+  font-size: 11px;
+  color: #6f6c64;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  pointer-events: none;
+}
+.code-block pre { padding-top: 34px; }
+.code-copy {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #c9c5ba;
+  font: inherit;
+  font-size: 12px;
+  border-radius: 6px;
+  padding: 3px 10px;
+  cursor: pointer;
+  transition: background 0.14s;
+}
+.code-copy:hover { background: rgba(255, 255, 255, 0.16); color: #f2efe8; }
+
+.apidocs-cols {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 18px;
+}
+
+/* --- MCP tools --- */
+.tool-list { display: flex; flex-direction: column; gap: 12px; }
+.tool {
+  padding: 14px 16px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+}
+.tool-sig {
+  display: inline-block;
+  font-size: 13.5px;
+  color: #a5d6a7;
+  background: none;
+  border: none;
+  padding: 0;
+  margin-bottom: 6px;
+}
+.tool-desc { font-size: 13.5px; line-height: 1.55; color: #b8b4aa; margin: 0 0 8px; }
+.tool-ret { font-size: 12px; color: #8a8780; }
+.tool-ret code { font-size: 12px; background: rgba(255, 255, 255, 0.05); }
+
+/* --- REST endpoint table --- */
+.endpoint-table {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  overflow: hidden;
+}
+.endpoint {
+  display: grid;
+  grid-template-columns: 54px minmax(0, 1.1fr) 1.3fr;
+  gap: 12px;
+  align-items: baseline;
+  padding: 11px 14px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  font-size: 13px;
+}
+.endpoint:first-child { border-top: none; }
+.method {
+  font-family: 'Fira Code', monospace;
+  font-size: 11px;
+  font-weight: 600;
+  text-align: center;
+  border-radius: 5px;
+  padding: 3px 0;
+}
+.method-get { color: #7db3ff; background: rgba(125, 179, 255, 0.12); }
+.method-post { color: #f0b866; background: rgba(240, 184, 102, 0.12); }
+.endpoint-path {
+  font-size: 12.5px;
+  color: #e6e2d8;
+  background: none;
+  border: none;
+  padding: 0;
+  word-break: break-word;
+}
+.endpoint-desc { color: #9a968c; }
+
+/* --- data model --- */
+.kind-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+  margin-top: 16px;
+}
+.kind {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+}
+.kind-dot { width: 11px; height: 11px; border-radius: 50%; flex-shrink: 0; }
+.kind-name { font-weight: 600; font-size: 14px; min-width: 92px; }
+.kind-id { font-size: 12px; color: #9a968c; background: none; border: none; padding: 0; }
+.edge-types {
+  font-family: 'Fira Code', monospace;
+  font-size: 12.5px;
+  line-height: 1.9;
+  color: #c9c5ba;
+}
+
+/* --- limits --- */
+.limit-list { margin: 14px 0 0; padding-left: 20px; }
+.limit-list li { font-size: 14px; line-height: 1.7; color: #b8b4aa; }
+
+/* --- footer --- */
+.apidocs-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  max-width: 900px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 24px 32px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  font-size: 13px;
+  color: #8a8780;
+}
+.apidocs-footer a:hover { color: #f2efe8; }
+
+@media (max-width: 720px) {
+  .apidocs-cols { grid-template-columns: 1fr; }
+  .kind-grid { grid-template-columns: 1fr; }
+  .endpoint { grid-template-columns: 48px 1fr; }
+  .endpoint-desc { grid-column: 2; }
+}
