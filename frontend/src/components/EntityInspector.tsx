@@ -38,6 +38,15 @@ function otherEnd(link: FGLink, nodeId: string): string | FGNode {
   return endId(link.source) === nodeId ? link.target : link.source;
 }
 
+// Display label for a relationship tab. On a Disease node the "Disease" edge group
+// *is* that disease's interactions (its associated variants / genes), so labelling
+// the tab "Disease" is redundant — show "Interactions". The grouping key stays
+// "Disease" (INTERACTS_WITH never lands on a disease node, so no collision).
+function tabLabel(tab: string, nodeType: string): string {
+  if (tab === 'Disease' && nodeType === 'disease') return 'Interactions';
+  return tab;
+}
+
 function RelRow({ link, nodeId }: { link: FGLink; nodeId: string }) {
   const other = otherEnd(link, nodeId);
   return (
@@ -262,7 +271,7 @@ export default function EntityInspector({ node, graphData, onClose, onExpand }: 
             className={`inspector-tab ${tab === activeTab ? 'active' : ''}`}
             onClick={() => setActive(tab)}
           >
-            {tab}
+            {tabLabel(tab, node.node_type)}
             {grouped[tab]?.length ? <span className="tab-count">{grouped[tab].length}</span> : null}
           </button>
         ))}
