@@ -31,7 +31,9 @@
 	# transport, so disable proxy buffering like /api/chat/stream — otherwise events
 	# stall. Without this block /mcp/* falls through to the SPA and the endpoint the
 	# API docs advertise (/mcp/sse) returns index.html instead of the MCP server.
-	handle /mcp /mcp/* {
+	# (`handle` takes one matcher token, so match both paths via a named matcher.)
+	@mcp path /mcp /mcp/*
+	handle @mcp {
 		reverse_proxy backend:8000 {
 			flush_interval -1
 		}
