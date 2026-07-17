@@ -20,7 +20,6 @@ const TABS: { key: string; label: string }[] = [
 const PAGE = 50;
 
 export default function EntityBrowser({ onMultiLoad, onClear }: Props) {
-  const [open, setOpen] = useState(false);
   const [q, setQ] = useState('');
   const [tab, setTab] = useState('all');
   const [showFilters, setShowFilters] = useState(false);
@@ -43,9 +42,10 @@ export default function EntityBrowser({ onMultiLoad, onClear }: Props) {
     offset: off,
   });
 
-  // Debounced search; resets the page whenever query/tab/filters change.
+  // Debounced search; resets the page whenever query/tab/filters change. The pane
+  // is always mounted inside the rail, so this fires once on mount to populate the
+  // initial (unfiltered) entity list.
   useEffect(() => {
-    if (!open) return;
     let cancelled = false;
     const h = setTimeout(async () => {
       try {
@@ -64,7 +64,7 @@ export default function EntityBrowser({ onMultiLoad, onClear }: Props) {
       clearTimeout(h);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [q, tab, chromosome, clinical, pliMin, open]);
+  }, [q, tab, chromosome, clinical, pliMin]);
 
   const loadMore = async () => {
     const next = offset + PAGE;
@@ -89,19 +89,6 @@ export default function EntityBrowser({ onMultiLoad, onClear }: Props) {
     onMultiLoad([...selected.values()].map((it) => ({ id: it.id, node_type: it.node_type })));
   };
 
-  if (!open) {
-    return (
-      <button
-        className="entity-handle"
-        onClick={() => setOpen(true)}
-        aria-label="Open entity browser"
-      >
-        ENTITY BROWSER
-        {selected.size > 0 && <span className="eb-badge">{selected.size}</span>}
-      </button>
-    );
-  }
-
   // Pin selected entities to the top of the list (kept visible even when the
   // current query/tab would otherwise exclude them).
   const selectedKeys = new Set(selected.keys());
@@ -111,17 +98,10 @@ export default function EntityBrowser({ onMultiLoad, onClear }: Props) {
   ];
 
   return (
-    <aside className="entity-browser">
-      <div className="entity-browser-head">
-        <strong>Entity Browser</strong>
-        <button className="node-panel-close" onClick={() => setOpen(false)}>
-          ‹
-        </button>
-      </div>
-
+    <div className="browse-pane">
       <input
         className="search-input eb-search"
-        placeholder="Search entities…"
+        placeholder="Filter this list…"
         value={q}
         onChange={(e) => setQ(e.target.value)}
       />
@@ -183,7 +163,13 @@ export default function EntityBrowser({ onMultiLoad, onClear }: Props) {
             </label>
           </li>
         ))}
-        {displayItems.length === 0 && <li className="eb-empty muted">No results</li>}
+        {displayItems.length === 0 && (
+          <li className="eb-empty muted">
+            {q.trim() || chromosome || clinical || pliMin > 0
+              ? 'No results'
+              : 'Type above to browse genes, proteins, variants, diseases…'}
+          </li>
+        )}
       </ul>
       {hasMore && (
         <button className="eb-more" onClick={loadMore}>
@@ -209,6 +195,6 @@ export default function EntityBrowser({ onMultiLoad, onClear }: Props) {
           Clear graph
         </button>
       </div>
-    </aside>
+    </div>
   );
 }

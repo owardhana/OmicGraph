@@ -480,16 +480,21 @@
 .anno-list li { margin: 1px 0; }
 
 /* ---- edge detail panel ---- */
+/* Docked on the right, sharing the slot with the node inspector (they are mutually
+   exclusive: a pinned edge clears the node selection). Hovered-edge preview is a
+   cursor tooltip in GraphViewer3D (.edge-tooltip), not this panel. */
 .edge-panel {
   position: absolute;
-  bottom: 60px;
-  left: 20px;
-  width: 290px;
-  border-radius: 12px;
-  padding: 16px;
-  z-index: 15;
+  top: 78px;
+  right: 18px;
+  width: 312px;
+  max-height: calc(100vh - 110px);
+  overflow-y: auto;
+  border-radius: 14px;
+  padding: 18px 20px;
+  z-index: 20;
   font-size: 13px;
-  animation: slideIn 0.15s ease-out;
+  animation: slideIn 0.18s ease-out;
 }
 .edge-panel-title {
   font-weight: 600;
@@ -615,46 +620,110 @@
   cursor: pointer;
 }
 
-/* ---- Phase 14: entity browser + multi-load banner ---- */
-.entity-handle {
+/* ====================================================================== */
+/* Unified left rail — one dock combining jump-search, Browse and Ask      */
+/* ====================================================================== */
+
+/* The single left dock. Floats below the top bar, above the status bar. A flex
+   column: pinned head (jump-search + Browse|Ask toggle) then a scrolling body that
+   holds both panes (one hidden). Provides the glass surface; the panes below are
+   transparent so they inherit it. */
+.left-rail {
   position: absolute;
-  top: 50%;
+  top: 58px;
+  left: 12px;
+  bottom: 34px;
+  width: 372px;
+  max-width: calc(100vw - 24px);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  border-radius: 14px;
+  z-index: 30;
+  background: var(--panel-glass);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  border: 1px solid var(--border);
+  box-shadow: 0 6px 20px -10px rgba(0, 0, 0, 0.45);
+}
+/* display:flex would otherwise override the `hidden` attribute when collapsed. */
+.left-rail[hidden] { display: none; }
+.rail-head { display: flex; flex-direction: column; gap: 10px; }
+.rail-search-row { display: flex; align-items: center; gap: 6px; }
+.rail-search-row .search-bar { flex: 1; width: auto; }
+.rail-collapse {
+  flex: 0 0 auto;
+  width: 30px;
+  height: 34px;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--text-muted);
+  border-radius: 8px;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+.rail-collapse:hover { color: var(--text); }
+.rail-seg {
+  display: flex;
+  gap: 3px;
+  padding: 3px;
+  border-radius: 9px;
+  background: var(--panel-hover);
+}
+.rail-seg button {
+  flex: 1;
+  border: none;
+  background: none;
+  color: var(--text-muted);
+  padding: 6px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: color 0.12s, background 0.12s;
+}
+.rail-seg button:hover { color: var(--text); }
+.rail-seg button.active {
+  background: var(--panel);
+  color: var(--text);
+  font-weight: 600;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.14);
+}
+.rail-body { flex: 1; min-height: 0; display: flex; }
+.rail-pane { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.rail-pane[hidden] { display: none; }
+
+/* Collapsed state: a slim vertical reopen handle at the left edge. */
+.rail-reopen {
+  position: absolute;
+  top: 64px;
   left: 0;
-  transform: translateY(-50%);
-  width: 24px;
-  padding: 14px 4px;
+  width: 26px;
+  padding: 16px 5px;
   writing-mode: vertical-rl;
   text-orientation: mixed;
   font-size: 10px;
-  letter-spacing: 0.12em;
-  background: #faf9f5;
-  color: #44423d;
-  border: 1px solid rgba(0, 0, 0, 0.12);
+  letter-spacing: 0.14em;
+  background: var(--panel);
+  color: var(--text-muted);
+  border: 1px solid var(--border);
   border-left: none;
-  border-radius: 0 6px 6px 0;
+  border-radius: 0 8px 8px 0;
   cursor: pointer;
   z-index: 30;
 }
-.entity-browser {
-  position: absolute;
-  top: 0;
-  left: 0;
-  bottom: 0;
-  width: 320px;
+.rail-reopen:hover { color: var(--text); }
+
+/* Browse pane (entity browser body) — fills the rail, transparent surface. */
+.browse-pane {
+  flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   gap: 8px;
-  padding: 12px;
-  background: #faf9f5;
-  border-right: 1px solid rgba(0, 0, 0, 0.12);
-  box-shadow: 2px 0 14px rgba(0, 0, 0, 0.25);
-  z-index: 30;
   overflow: hidden;
-}
-.entity-browser-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
   color: #2a2926;
 }
 .eb-search { width: 100%; }
@@ -728,12 +797,10 @@
 /* Phase 8c — UI polish                                                    */
 /* ====================================================================== */
 
-/* Frosted glass on the four detail/browser panels (appended last so it wins
-   over the earlier solid .entity-browser background). Light translucency keeps
-   the existing dark-on-light text readable; see PHASE3_PROGRESS.md. */
+/* Frosted glass on the right-dock detail panels. The left rail sets its own glass
+   surface. Light translucency keeps the dark-on-light text readable. */
 .node-panel,
-.edge-panel,
-.entity-browser {
+.edge-panel {
   background: var(--panel-glass);
   -webkit-backdrop-filter: blur(12px);
   backdrop-filter: blur(12px);
@@ -770,6 +837,24 @@
   color: var(--text-muted);
 }
 .node-tooltip-metric { margin-top: 5px; font-size: 11px; color: var(--text-muted); font-family: var(--mono); }
+
+/* ---- edge hover tooltip (3D viewer) — quick inspect without pinning ---- */
+.edge-tooltip {
+  position: fixed;
+  pointer-events: none;
+  z-index: 40;
+  max-width: 250px;
+  padding: 7px 10px;
+  border-radius: 8px;
+  background: var(--panel-glass);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  border: 1px solid var(--border);
+  box-shadow: 0 8px 24px -10px rgba(0, 0, 0, 0.5);
+  color: var(--text);
+}
+.edge-tooltip-title { font-weight: 600; font-size: 12.5px; }
+.edge-tooltip-type { margin-top: 3px; font-size: 11px; color: var(--text-muted); font-family: var(--mono); }
 
 /* ---- error banner (top of the affected area) ---- */
 .error-banner {
@@ -852,21 +937,8 @@
   gap: 6px;
 }
 
-/* ---- entity browser refinements (pin selected, badge, pulse) ---- */
+/* ---- entity browser refinements (pin selected, pulse) ---- */
 .eb-row.selected { background: var(--panel-hover); }
-.eb-badge {
-  /* The handle is writing-mode: vertical-rl, so the badge flows BELOW the label;
-     a top margin (not left) gives it clearance so it doesn't clip the "R". */
-  margin-top: 6px;
-  font-size: 10px;
-  font-weight: 700;
-  background: var(--active);
-  color: var(--active-text);
-  border-radius: 999px;
-  padding: 0 6px;
-  min-width: 16px;
-  text-align: center;
-}
 .eb-load.has-selection { animation: pulse 1.4s ease-in-out infinite; }
 @keyframes pulse {
   0%, 100% { box-shadow: 0 0 0 0 rgba(42, 42, 38, 0.0); }
@@ -890,64 +962,43 @@
 .search-clear:hover { color: var(--text); }
 .search-option.active { background: var(--panel-hover); }
 
-/* ---- Ask OmicGraph — agentic chat panel (Feature 1) ---- */
-.chat-panel {
-  position: absolute;
-  bottom: 28px;
-  left: 20px;
-  width: 420px;
-  max-width: calc(100vw - 40px);
-  z-index: 25;
+/* ---- Ask OmicGraph — agentic chat, as an in-rail pane (Feature 1) ---- */
+.ask-pane {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
   font-size: 13.5px;
 }
-
-/* header: title toggle + "New chat", rounded top, hairline */
-.chat-header {
+.ask-head {
   display: flex;
-  align-items: stretch;
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: 14px 14px 0 0;
-  box-shadow: 0 10px 34px -14px rgba(0, 0, 0, 0.5);
+  justify-content: flex-end;
+  margin-bottom: 6px;
 }
-.chat-panel.open .chat-header { border-bottom: none; }
-.chat-toggle {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  border: none;
-  background: none;
-  color: var(--text);
-  padding: 12px 16px;
-  text-align: left;
-  font-weight: 600;
-  font-size: 14px;
-  border-radius: 14px 14px 0 0;
-}
-.chat-caret { color: var(--text-faint); font-size: 11px; }
 .chat-new {
-  border: none;
-  background: none;
+  border: 1px solid var(--border);
+  background: var(--panel);
   color: var(--text-muted);
-  padding: 0 15px;
+  padding: 4px 12px;
   font-size: 12px;
   font-weight: 500;
-  border-left: 1px solid var(--border);
-  border-radius: 0 14px 0 0;
+  border-radius: 7px;
+  cursor: pointer;
 }
 .chat-new:hover:not(:disabled) { color: var(--text); background: var(--panel-hover); }
 .chat-new:disabled { opacity: 0.4; cursor: default; }
 
 .chat-body {
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-top: 1px solid var(--border);
-  box-shadow: 0 10px 34px -14px rgba(0, 0, 0, 0.5);
-  padding: 12px 12px 14px;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: transparent;
+  padding: 0;
 }
 .chat-log {
-  max-height: 56vh;
+  flex: 1;
+  min-height: 0;
   overflow-y: auto;
   display: flex;
   flex-direction: column;

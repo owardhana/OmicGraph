@@ -3,13 +3,11 @@ import { useEffect, useState } from 'react';
 import './App.css';
 import { api, DEFAULT_GENE } from './api/client';
 import EdgeDetailPanel from './components/EdgeDetailPanel';
-import EntityBrowser from './components/EntityBrowser';
 import GraphLegend from './components/GraphLegend';
 import GraphViewer3D from './components/GraphViewer3D';
 import LayerToggle from './components/LayerToggle';
 import EntityInspector from './components/EntityInspector';
-import ChatPanel from './components/ChatPanel';
-import SearchBar from './components/SearchBar';
+import LeftRail from './components/LeftRail';
 import ShortcutsOverlay from './components/ShortcutsOverlay';
 import TissueFilter from './components/TissueFilter';
 import { useGraph } from './hooks/useGraph';
@@ -43,7 +41,6 @@ export default function App() {
     phenotype: true,
   });
   const [selectedNode, setSelectedNode] = useState<FGNode | null>(null);
-  const [hoveredEdge, setHoveredEdge] = useState<FGLink | null>(null);
   const [selectedEdge, setSelectedEdge] = useState<FGLink | null>(null);
   const [cameraMode, setCameraMode] = useState<'orbit' | 'fly'>('orbit');
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
@@ -181,12 +178,21 @@ export default function App() {
           setSelectedNode(null);
           setSelectedEdge(null);
         }}
-        onEdgeHover={setHoveredEdge}
-        onEdgeClick={setSelectedEdge}
+        onEdgeClick={(l) => {
+          // A pinned edge and a node inspector share the right dock, so they must
+          // be mutually exclusive — selecting an edge clears any node selection.
+          setSelectedEdge(l);
+          setSelectedNode(null);
+        }}
         onCameraModeChange={setCameraMode}
       />
 
-      <EntityBrowser onMultiLoad={handleMultiLoad} onClear={handleClear} />
+      <LeftRail
+        onSelect={handleSelect}
+        onMultiLoad={handleMultiLoad}
+        onClear={handleClear}
+        tissue={activeTissue}
+      />
 
       {(disconnected || pathNote) && (
         <div className="graph-banner">
@@ -212,7 +218,6 @@ export default function App() {
       <header className="topbar">
         <div className="topbar-left">
           <div className="brand">OmicGraph</div>
-          <SearchBar onSelect={handleSelect} />
         </div>
         <LayerToggle visibleLayers={visibleLayers} onToggle={handleToggleLayer} />
         <TissueFilter active={activeTissue} onChange={handleTissueChange} />
@@ -254,20 +259,20 @@ export default function App() {
       )}
       {shortcutsOpen && <ShortcutsOverlay onClose={() => setShortcutsOpen(false)} />}
 
+      {/* Right dock: node inspector and pinned-edge detail are mutually exclusive
+          (edge-click clears the node), so a pinned edge takes the slot. Hovered
+          edges show as a cursor tooltip inside GraphViewer3D, not here. */}
       <EntityInspector
-        node={selectedNode}
+        node={selectedEdge ? null : selectedNode}
         graphData={graphData}
         onClose={() => setSelectedNode(null)}
         onExpand={handleExpand}
       />
 
-      {/* Pinned (clicked) edge takes precedence over the hovered one. */}
       <EdgeDetailPanel
-        link={selectedEdge ?? hoveredEdge}
-        onClose={selectedEdge ? () => setSelectedEdge(null) : undefined}
+        link={selectedEdge}
+        onClose={() => setSelectedEdge(null)}
       />
-
-      <ChatPanel tissue={activeTissue} />
     </div>
   );
 }

@@ -20,7 +20,7 @@ interface Props {
   selectedEdgeId: string | null;
   onNodeClick: (node: FGNode) => void;
   onBackgroundClick: () => void;
-  onEdgeHover: (link: FGLink | null) => void;
+  onEdgeHover?: (link: FGLink | null) => void;
   onEdgeClick: (link: FGLink | null) => void;
   onCameraModeChange?: (mode: 'orbit' | 'fly') => void;
 }
@@ -47,6 +47,12 @@ function nodeDisplayName(n: FGNode): string {
   if (n.node_type === 'variant') return n.rsid ?? n.id;
   if (n.node_type === 'metabolite') return n.name ?? n.hmdb_id ?? n.id;
   return n.name ?? n.ontology_id;
+}
+
+// Endpoint label for the edge hover tooltip. force-graph resolves link.source /
+// link.target to node objects after layout, but they can still be bare id strings.
+function linkEndLabel(end: string | FGNode): string {
+  return typeof end === 'object' ? nodeDisplayName(end) : end;
 }
 
 const PLANE_SIZE = 1400;
@@ -108,6 +114,7 @@ export default function GraphViewer3D({
   const initRef = useRef(false);
   const [cameraMode, setCameraMode] = useState<'orbit' | 'fly'>('orbit');
   const [hovered, setHovered] = useState<FGNode | null>(null);
+  const [hoveredLink, setHoveredLink] = useState<FGLink | null>(null);
   const mouseRef = useRef({ x: 0, y: 0 });
   const [tipPos, setTipPos] = useState({ x: 0, y: 0 });
 
@@ -343,10 +350,20 @@ export default function GraphViewer3D({
       onNodeClick={(n: FGNode) => onNodeClick(n)}
       onNodeHover={(n: FGNode | null) => {
         setHovered(n);
-        if (n) setTipPos({ x: mouseRef.current.x, y: mouseRef.current.y });
+        if (n) {
+          setHoveredLink(null);
+          setTipPos({ x: mouseRef.current.x, y: mouseRef.current.y });
+        }
       }}
       onBackgroundClick={() => onBackgroundClick()}
-      onLinkHover={(l: FGLink | null) => onEdgeHover(l)}
+      onLinkHover={(l: FGLink | null) => {
+        setHoveredLink(l);
+        if (l) {
+          setHovered(null);
+          setTipPos({ x: mouseRef.current.x, y: mouseRef.current.y });
+        }
+        onEdgeHover?.(l);
+      }}
       onLinkClick={(l: FGLink | null) => onEdgeClick(l)}
     />
     <div
@@ -389,6 +406,23 @@ export default function GraphViewer3D({
         {nodeMetric(hovered) && (
           <div className="node-tooltip-metric">{nodeMetric(hovered)}</div>
         )}
+      </div>
+    )}
+    {hoveredLink && (
+      <div
+        className="edge-tooltip"
+        style={{
+          left: Math.min(tipPos.x + 14, dims.w - 250),
+          top: Math.min(tipPos.y + 14, dims.h - 70),
+        }}
+      >
+        <div className="edge-tooltip-title">
+          {linkEndLabel(hoveredLink.source)} → {linkEndLabel(hoveredLink.target)}
+        </div>
+        <div className="edge-tooltip-type">
+          {hoveredLink.rel_type}
+          {hoveredLink.mode ? ` · ${hoveredLink.mode}` : ''}
+        </div>
       </div>
     )}
     </>

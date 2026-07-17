@@ -28,7 +28,6 @@ function Assistant({ text }: { text: string }) {
 // over the live graph, with server-side conversational memory. Replaces the former
 // one-shot Text2Cypher box — this is the sole chat surface.
 export default function ChatPanel({ tissue }: Props) {
-  const [open, setOpen] = useState(false);
   const [input, setInput] = useState('');
   const { messages, draft, streaming, tool, error, send, reset } = useChat();
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -46,17 +45,9 @@ export default function ChatPanel({ tissue }: Props) {
   };
 
   return (
-    <div className={`chat-panel${open ? ' open' : ''}`}>
-      <div className="chat-header">
-        <button
-          className="chat-toggle"
-          onClick={() => setOpen((v) => !v)}
-          aria-expanded={open}
-        >
-          <span className="chat-caret">{open ? '▾' : '▸'}</span>
-          Ask OmicGraph
-        </button>
-        {open && messages.length > 0 && (
+    <div className="ask-pane">
+      {messages.length > 0 && (
+        <div className="ask-head">
           <button
             className="chat-new"
             onClick={reset}
@@ -65,58 +56,56 @@ export default function ChatPanel({ tissue }: Props) {
           >
             New chat
           </button>
-        )}
-      </div>
-
-      {open && (
-        <div className="chat-body">
-          <div className="chat-log" ref={scrollRef}>
-            {messages.length === 0 && !streaming && (
-              <div className="chat-hint">
-                Ask about the graph — e.g. <em>“How are TP53 and EGFR connected?”</em> or
-                <em>“What metabolites does LDHA catalyse?”</em>. I search, traverse, and
-                trace paths, and I remember earlier turns in this conversation.
-              </div>
-            )}
-            {messages.map((m, i) => (
-              <div key={i} className={`chat-msg chat-${m.role}`}>
-                {m.role === 'assistant' ? <Assistant text={m.content} /> : m.content}
-              </div>
-            ))}
-            {streaming && (
-              <div className="chat-msg chat-assistant chat-streaming">
-                {draft ? (
-                  <Assistant text={draft} />
-                ) : (
-                  <span className="chat-tool">{tool ? `running ${tool}…` : 'thinking…'}</span>
-                )}
-                {draft && tool && <span className="chat-tool">running {tool}…</span>}
-              </div>
-            )}
-          </div>
-
-          {error && <div className="chat-error">{error}</div>}
-
-          <div className="chat-input-row">
-            <input
-              className="chat-input"
-              placeholder="Ask OmicGraph…"
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && submit()}
-              disabled={streaming}
-            />
-            <button
-              className="chat-send"
-              onClick={submit}
-              disabled={streaming || !input.trim()}
-              aria-label="Send"
-            >
-              {streaming ? '…' : '↑'}
-            </button>
-          </div>
         </div>
       )}
+
+      <div className="chat-body">
+        <div className="chat-log" ref={scrollRef}>
+          {messages.length === 0 && !streaming && (
+            <div className="chat-hint">
+              Ask about the graph — e.g. <em>“How are TP53 and EGFR connected?”</em> or
+              <em>“What metabolites does LDHA catalyse?”</em>. I search, traverse, and
+              trace paths, and I remember earlier turns in this conversation.
+            </div>
+          )}
+          {messages.map((m, i) => (
+            <div key={i} className={`chat-msg chat-${m.role}`}>
+              {m.role === 'assistant' ? <Assistant text={m.content} /> : m.content}
+            </div>
+          ))}
+          {streaming && (
+            <div className="chat-msg chat-assistant chat-streaming">
+              {draft ? (
+                <Assistant text={draft} />
+              ) : (
+                <span className="chat-tool">{tool ? `running ${tool}…` : 'thinking…'}</span>
+              )}
+              {draft && tool && <span className="chat-tool">running {tool}…</span>}
+            </div>
+          )}
+        </div>
+
+        {error && <div className="chat-error">{error}</div>}
+
+        <div className="chat-input-row">
+          <input
+            className="chat-input"
+            placeholder="Ask OmicGraph…"
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && submit()}
+            disabled={streaming}
+          />
+          <button
+            className="chat-send"
+            onClick={submit}
+            disabled={streaming || !input.trim()}
+            aria-label="Send"
+          >
+            {streaming ? '…' : '↑'}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
