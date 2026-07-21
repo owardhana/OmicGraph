@@ -112,8 +112,10 @@ link used only when the protein's canonical transcript is absent.
 
 **Interacts with**:
 A physical protein-protein interaction between two **protein** nodes. Intra-layer,
-within proteomics. Source: STRING v12, filtered at `combined_score > 0.9` (~50k
-edges). Conductance in signal-decay traversal = STRING `combined_score`. Expansion
+within proteomics. Source: STRING v12, filtered at `combined_score > 0.95` (~101k
+edges over the full proteome — raised from the earlier `>0.9`/~50k cutoff when
+ADR-0010 expanded Protein to the full ~20k proteome). Conductance in signal-decay
+traversal = STRING `combined_score`. Expansion
 per traversal frontier step is capped at top-k by `combined_score` (default k=10)
 to prevent hub-protein explosion.
 _Avoid_: "PPI" as a relationship label — the label is `INTERACTS_WITH`.

@@ -23,9 +23,16 @@ metabolite layer. See [`docs/roadmap.md`](docs/roadmap.md) for the live tally.
 
 Query it through an **agentic chat assistant** (`ChatAgent`) that streams answers while
 calling read-only graph tools (search, subgraph, shortest-path, read-only Cypher) with
-conversational memory — including a natural-language→Cypher escape hatch. Runs locally,
-or **24/7 in production** on a free Oracle Cloud VM — see
+conversational memory — including a natural-language→Cypher escape hatch. Also reachable
+programmatically via a **read-only MCP server at `/mcp`** (search / semantic search /
+subgraph / shortest-path + bounded export, no `run_cypher` — [ADR-0017](docs/adr/0017-public-access-model.md)).
+Runs locally, or **24/7 in production** on a free Oracle Cloud VM — see
 [`docs/deploy/oracle-runbook.md`](docs/deploy/oracle-runbook.md).
+
+The web app has four hash routes: `/` (landing front door), `#/app` (the 3D graph —
+a unified left rail merges search, entity browsing, and the chat assistant behind a
+Browse|Ask toggle), `#/api` (developer docs: MCP connect config + REST reference),
+and `#/admin` (literature-review dashboard, `ADMIN_TOKEN`-gated).
 
 ---
 
@@ -58,13 +65,13 @@ Project_OMNI/
 │   ├── vision-and-mvp.md      ← why it exists, scope, design decisions
 │   ├── data-architecture.md   ← data model + full field-level provenance catalog
 │   ├── roadmap.md             ← current state + future/gated work
-│   ├── adr/                   ← Architecture Decision Records (0001–0013)
+│   ├── adr/                   ← Architecture Decision Records (0001–0017)
 │   ├── deploy/                ← Oracle Cloud production runbook
-│   └── design/                ← forward-looking design docs (Feature 2, cloud migration)
+│   └── design/                ← forward-looking design docs (Feature 2, cloud migration, next-phase plan)
 │
-├── etl/                       ← ingestion scripts, run in DAG order (01→16)
+├── etl/                       ← ingestion scripts (01→19; run_pipeline.py orchestrates 01→16)
 │   ├── 00_download.sh         ← fetch raw sources into data/raw/
-│   ├── 01_hgnc.py … 16_gnomad_af.py
+│   ├── 01_hgnc.py … 19_opentargets.py  (17–19 are annotation enrichers, run standalone — see below)
 │   ├── run_pipeline.py        ← Python DAG runner (declares order, logs DataSource)
 │   └── reference/             ← curated crosswalks (e.g. tcga_disease_to_efo.tsv)
 │
@@ -93,7 +100,7 @@ Project_OMNI/
 | [`docs/roadmap.md`](docs/roadmap.md) | Current graph state, what's done, what's deferred/gated |
 | [`docs/adr/`](docs/adr/) | Architecture Decision Records — the *why* behind irreversible choices |
 | [`docs/deploy/`](docs/deploy/oracle-runbook.md) | Production deployment runbook (Oracle Cloud free tier) — provision → firewall → graph transfer → run → operate |
-| [`docs/design/`](docs/design/) | Forward-looking design docs (literature-extraction agent, cloud migration rationale) |
+| [`docs/design/`](docs/design/) | Forward-looking design docs (literature-extraction agent, cloud migration rationale, OmicGraph next-phase plan) |
 | [`CONTEXT.md`](CONTEXT.md) | Domain glossary (canonical terms) |
 | [`AGENTS.md`](AGENTS.md) | Agent definitions + safety rules |
 
@@ -105,7 +112,10 @@ proteins) · [0005](docs/adr/0005-signal-decay-traversal.md) (signal-decay trave
 [0011](docs/adr/0011-backbone-guaranteed-traversal.md) (backbone-guaranteed traversal) ·
 [0012](docs/adr/0012-metabolite-bridge-connectivity.md) (metabolite bridge — opt-in) ·
 [0013](docs/adr/0013-literature-extraction-trust-model.md) (literature-extraction trust model) ·
-[0014](docs/adr/0014-literature-review-dashboard.md) (literature review dashboard — human-gate).
+[0014](docs/adr/0014-literature-review-dashboard.md) (literature review dashboard — human-gate) ·
+[0015](docs/adr/0015-enrichment-as-annotations.md) (enrichment as annotations, not new node kinds) ·
+[0016](docs/adr/0016-disgenet-curated-gene-disease.md) (curated gene-disease via Open Targets) ·
+[0017](docs/adr/0017-public-access-model.md) (public access model — open site, key-gated MCP, no public `run_cypher`).
 
 ---
 
@@ -121,6 +131,9 @@ cp .env.example .env        # then fill in OPENROUTER_API_KEY, NEO4J_PASSWORD, e
 # 3. Load data (one-time; topology = bulk files, enrichment = APIs)
 bash etl/00_download.sh                       # fetch raw sources into data/raw/
 etl/.venv/bin/python etl/run_pipeline.py      # runs 01→16 in dependency order
+# 17_location / 18_pathways / 19_opentargets are annotation enrichers (Pillar 1,
+# ADR-0015/0016) — not yet wired into run_pipeline.py's DAG; run each standalone,
+# e.g. etl/.venv/bin/python etl/17_location.py
 
 # 4. Backend
 backend/.venv/bin/uvicorn backend.main:app --reload   # http://localhost:8000

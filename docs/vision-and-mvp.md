@@ -60,6 +60,9 @@ No single existing system has all five.
   compartment-aware PPI filter gates `INTERACTS_WITH`.
 - **Read-only MCP server** at `/mcp` (ADR-0017) — search / semantic / subgraph /
   shortest-path + bounded export for external agents; no raw Cypher.
+- **Public front door:** a landing page (`/`), self-serve developer docs at `#/api`
+  (MCP connect config + REST reference), and the `#/admin` literature-review
+  dashboard (ADR-0014) with an up-front token gate.
 - Signal-decay traversal ([ADR-0005](adr/0005-signal-decay-traversal.md),
   [ADR-0011](adr/0011-backbone-guaranteed-traversal.md)), tissue-as-opacity
   ([ADR-0006](adr/0006-tissue-as-visual-channel.md)), an agentic chat assistant
@@ -158,15 +161,27 @@ FastAPI CORS allows `http://localhost:3000` in development.
 - **Theme:** neutral, Claude-Code-style — warm charcoal canvas, solid light panels,
   no gradients; saturated colour reserved for graph nodes. Camera: Orbit (default) /
   Fly toggle via `F`.
-- **Edges:** click-to-select (pin detail) with subtle link curvature for
-  separability. **Nodes:** click opens a detail panel + "Expand neighbourhood".
+- **Edges:** click-to-select (pin detail, rendered in the right dock alongside the
+  node inspector — mutually exclusive) with subtle link curvature for separability,
+  plus a lightweight hover tooltip. **Nodes:** hover shows a tooltip (name + kind);
+  click opens the Entity Inspector + "Expand neighbourhood".
 
-### Entity Browser & multi-select
-Collapsible left panel (slides over the viewer; viewer does not resize, preserving
-layout stability). Server-side debounced search via `GET /api/entities` with
-virtualized list — scales to 500k+ nodes. Checkbox per row; "Load selected (N)"
-calls `POST /api/graph/multi`. **Additive** merge — selections add to the current
-graph; "Clear" resets to empty (not default TP53). User controls accumulation.
+### Left rail: search, browse & ask (unified)
+A single left dock (`LeftRail`) holds a pinned "jump to entity" search bar on top
+and a **Browse | Ask** mode toggle underneath, replacing what were once three
+separate components (`SearchBar`, `EntityBrowser`, `ChatPanel`). Both the Browse
+and Ask panes stay **mounted** at all times — hidden via the `hidden` attribute
+rather than unmounted — so switching modes or collapsing/reopening the rail never
+drops the Browse pane's staged multi-selection or the Ask pane's chat thread.
+
+**Browse pane** (`EntityBrowser`): server-side debounced search via
+`GET /api/entities` with a virtualized list — scales to 500k+ nodes. Checkbox per
+row; "Load selected (N)" calls `POST /api/graph/multi`. **Additive** merge —
+selections add to the current graph; "Clear" resets to empty (not default TP53).
+User controls accumulation.
+
+**Ask pane** (`ChatPanel`): the agentic chat assistant, unchanged in behavior —
+now just one of the two rail modes instead of its own dock.
 
 ### Multi-seed loading & disconnected islands
 `POST /api/graph/multi` runs signal-decay traversal from each seed in parallel
