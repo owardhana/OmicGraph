@@ -22,7 +22,7 @@ import httpx
 from backend.agents.base_agent import BaseAgent
 from backend.config import settings
 from backend.db.neo4j_client import get_session
-from backend.llm.client import CITATION_CHECK_MODEL, complete
+from backend.llm.client import CITATION_CHECK_MODEL, complete, reasoning_model_kwargs
 from backend.llm.prompts.citation_check import CITATION_CHECK_SYSTEM_PROMPT
 
 logger = logging.getLogger(__name__)
@@ -35,7 +35,7 @@ _JSON_RE = re.compile(r"\{.*\}", re.DOTALL)
 
 class CitationAgent(BaseAgent):
     agent_name = "CitationAgent"
-    agent_version = "0.1.0"
+    agent_version = "0.2.0"
 
     @property
     def _request_delay(self) -> float:
@@ -97,6 +97,10 @@ class CitationAgent(BaseAgent):
         return abstracts
 
     async def _is_relevant(self, abstract: str, src: str, tgt: str) -> bool:
+        """Clean verdict: True/False. Raises on a transient LLM failure (``complete``
+        raises on a 502/timeout/empty-choices) so the caller can leave the edge pending
+        instead of poisoning it as ``citation_attempted``. Unparseable output is a clean
+        'not relevant' (drop), matching the extraction pipeline's recall-only stance."""
         if not abstract:
             return False
         raw = await complete(
@@ -109,6 +113,7 @@ class CitationAgent(BaseAgent):
                 },
             ],
             temperature=0,
+            **reasoning_model_kwargs(),
         )
         match = _JSON_RE.search(raw)
         if not match:
@@ -143,10 +148,12 @@ class CitationAgent(BaseAgent):
         delay = self._request_delay
         edges_processed = 0
         pmids_added = 0
+        edges_skipped = 0  # left pending because a call couldn't complete (transient)
 
         async with httpx.AsyncClient(timeout=30.0) as http:
             for edge in edges:
                 validated: list[str] = []
+                incomplete = False  # an NCBI/LLM call failed transiently for this edge
                 try:
                     candidate_pmids = await self._esearch(http, edge["src"], edge["tgt"])
                     await asyncio.sleep(delay)
@@ -154,19 +161,45 @@ class CitationAgent(BaseAgent):
                         abstracts = await self._efetch_abstracts(http, candidate_pmids)
                         await asyncio.sleep(delay)
                         for pmid, abstract in abstracts.items():
-                            if await self._is_relevant(abstract, edge["src"], edge["tgt"]):
+                            try:
+                                relevant = await self._is_relevant(
+                                    abstract, edge["src"], edge["tgt"]
+                                )
+                            except Exception as exc:  # noqa: BLE001
+                                # Transient LLM failure (free-tier 502/timeout): skip this
+                                # abstract; don't let it poison the edge as attempted.
+                                incomplete = True
+                                logger.warning(
+                                    "CitationAgent: relevance check failed %s (%s->%s): %s",
+                                    pmid, edge["src"], edge["tgt"], exc,
+                                )
+                                continue
+                            if relevant:
                                 validated.append(str(pmid))
                 except Exception as exc:  # noqa: BLE001
+                    # NCBI-side error (esearch/efetch) — also transient, retry next run.
+                    incomplete = True
                     logger.warning(
                         "CitationAgent: error citing %s->%s: %s",
                         edge["src"], edge["tgt"], exc,
                     )
-                # Always mark attempted (even with 0 results) to avoid re-querying.
+                # Only mark attempted on a clean pass — found >=1 pmid, OR a genuine
+                # no-hit / not-relevant result. If the check couldn't complete AND found
+                # nothing, leave the edge pending so a healthy run retries it (mirrors the
+                # backfill: throttling costs time, not data). A partial success (>=1 pmid
+                # despite a transient error on another abstract) is still recorded.
+                if incomplete and not validated:
+                    edges_skipped += 1
+                    continue
                 await self._write_pmids(edge["eid"], validated)
                 edges_processed += 1
                 pmids_added += len(validated)
 
-        summary = {"edges_processed": edges_processed, "pmids_added": pmids_added}
+        summary = {
+            "edges_processed": edges_processed,
+            "pmids_added": pmids_added,
+            "edges_skipped": edges_skipped,
+        }
         await self.write_run_log_to_graph("CitationRun", summary)
         return summary
 

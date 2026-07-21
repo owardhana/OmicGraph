@@ -17,7 +17,7 @@ from dataclasses import dataclass
 from backend.config import settings
 from backend.extraction.dictionary import Entry
 from backend.extraction.ratelimit import AsyncRateLimiter
-from backend.llm.client import complete
+from backend.llm.client import complete, reasoning_model_kwargs
 from backend.llm.prompts.extraction import (
     EXTRACTION_SYSTEM_PROMPT,
     build_extraction_prompt,
@@ -91,18 +91,6 @@ def _parse(raw: str) -> dict | None:
     }
 
 
-def _completion_kwargs() -> dict:
-    """Extra OpenRouter args for the verdict call:
-    - a bounded ``timeout`` so a slow/queued free model can't block a verdict for the
-      SDK's ~10-min default (a timeout raises → counted as an llm_error → chunk retried);
-    - ``reasoning.exclude`` so a reasoning model's chain-of-thought preamble doesn't reach
-      the JSON parser (no-op on non-reasoning models)."""
-    kwargs: dict = {"temperature": 0, "timeout": settings.EXTRACTION_LLM_TIMEOUT_S}
-    if settings.EXTRACTION_EXCLUDE_REASONING:
-        kwargs["extra_body"] = {"reasoning": {"exclude": True}}
-    return kwargs
-
-
 async def extract_relation(
     sentence: str, a: Entry, b: Entry, pmid: str, model: str | None = None
 ) -> RelationVerdict | None:
@@ -124,7 +112,8 @@ async def extract_relation(
             {"role": "system", "content": EXTRACTION_SYSTEM_PROMPT},
             {"role": "user", "content": build_extraction_prompt(sentence, subj, obj, edge_type)},
         ],
-        **_completion_kwargs(),
+        temperature=0,
+        **reasoning_model_kwargs(),
     )
     parsed = _parse(raw)
     if parsed is None:

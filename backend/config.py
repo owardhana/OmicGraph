@@ -36,7 +36,12 @@ class Settings(BaseSettings):
 
     # Models (OpenRouter slugs)
     SYNTHESIS_MODEL: str = "anthropic/claude-sonnet-4.6"
-    CITATION_CHECK_MODEL: str = "anthropic/claude-haiku-4.5"
+    # Citation-relevance check (does this abstract discuss both entities?). Same FREE
+    # Nemotron slug as EXTRACTION_MODEL so the nightly citation cron also costs $0 — the
+    # check returns a tiny JSON verdict, well within a free model's ability. Reasoning
+    # exclusion + a bounded timeout are applied via llm.client.reasoning_model_kwargs.
+    # Swap to a paid slug (e.g. anthropic/claude-haiku-4.5) for higher precision.
+    CITATION_CHECK_MODEL: str = "nvidia/nemotron-3-ultra-550b-a55b:free"
     # Phase 2: embedding model for semantic search (ADR-0008). 1536-dim.
     EMBEDDING_MODEL: str = "openai/text-embedding-3-small"
 

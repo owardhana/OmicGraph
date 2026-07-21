@@ -64,9 +64,10 @@ fetch batch of edges with no citations
 - NEVER trusts LLM to assert biological facts — only to confirm entity co-mention
 - Rate limit: 3 NCBI requests/second (free tier)
 - Skip edge if already has ≥3 PMIDs
-- Mark edge `citation_attempted: true` even if 0 results (prevent re-querying)
+- Mark edge `citation_attempted: true` on a clean pass (incl. a genuine 0-result), so it isn't re-queried — but NOT when the relevance check couldn't complete (transient 502/timeout), so throttling costs time, not data
+- Relevance check runs on the FREE Nemotron slug (same as EXTRACTION_MODEL) with reasoning-exclusion + a bounded timeout
 
-**Tools:** NCBI E-utilities API, Neo4j driver, OpenRouter API (optional relevance check, haiku model)
+**Tools:** NCBI E-utilities API, Neo4j driver, OpenRouter API (relevance check, `CITATION_CHECK_MODEL` = free Nemotron)
 
 **Files:** `backend/agents/citation_agent.py`
 

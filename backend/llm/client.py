@@ -18,6 +18,23 @@ _EMBED_MAX_CHARS = 8000  # keep well under the embedding model's token limit
 _client: AsyncOpenAI | None = None
 
 
+def reasoning_model_kwargs() -> dict:
+    """Defensive completion kwargs shared by both callers of the free reasoning model
+    (the extraction relation verdict and the citation-relevance check — both now run on
+    the same Nemotron slug):
+
+    - ``timeout`` — a bounded per-call budget. A free/reasoning model can stream very
+      slowly or sit queued, and the OpenAI SDK default is ~10 min; a timeout raises,
+      which callers treat as a transient/retryable error rather than a silent hang.
+    - ``reasoning.exclude`` — drop the chain-of-thought preamble so the JSON parser sees
+      clean output. No-op on non-reasoning models; gated on ``EXTRACTION_EXCLUDE_REASONING``.
+    """
+    kwargs: dict = {"timeout": settings.EXTRACTION_LLM_TIMEOUT_S}
+    if settings.EXTRACTION_EXCLUDE_REASONING:
+        kwargs["extra_body"] = {"reasoning": {"exclude": True}}
+    return kwargs
+
+
 def get_client() -> AsyncOpenAI:
     global _client
     if _client is None:

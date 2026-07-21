@@ -97,7 +97,7 @@ formal record, the ADR is linked.
 |----------|--------|-----------|
 | LLM API | OpenRouter (OpenAI-compatible) | Single key, model swap without code change |
 | Chat / synthesis model | `anthropic/claude-sonnet-4.6` | Tool-calling + graph reasoning |
-| Citation relevance check | `anthropic/claude-haiku-4.5` | Cheap entity co-mention check |
+| Citation relevance check | `nvidia/nemotron-3-ultra-550b-a55b:free` | Cheap entity co-mention check — FREE slug so the nightly cron costs $0 (swap to a paid slug for higher precision) |
 | Embeddings | `openai/text-embedding-3-small` (1536-dim) | Semantic search |
 | Agent scheduling | APScheduler inside FastAPI | No extra services |
 | Citation agent scope | PMID enrichment only — no topology writes | Safety: no hallucinated biology |
