@@ -4,6 +4,7 @@ import './AdminDashboard.css';
 import {
   AdminAuthError,
   adminApi,
+  clearAdminToken,
   getAdminToken,
   setAdminToken,
 } from '../api/client';
@@ -181,6 +182,19 @@ export default function AdminDashboard() {
           <span className="admin-sub">candidate promotion queue · ADR-0014</span>
         </div>
         {flash && <span className="admin-flash">{flash}</span>}
+        {/* The stored token otherwise persists forever, so #/admin never challenges
+            again on this browser. Locking forgets it and returns to the gate. */}
+        <button
+          className="admin-lock"
+          onClick={() => {
+            clearAdminToken();
+            setGateError(null);
+            setAuthNeeded(true);
+          }}
+          title="Forget the admin token on this browser"
+        >
+          Lock
+        </button>
       </header>
 
       <div className="admin-body">

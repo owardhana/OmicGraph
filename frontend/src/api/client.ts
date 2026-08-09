@@ -165,6 +165,10 @@ const ADMIN_TOKEN_KEY = 'omicgraph_admin_token';
 
 export const getAdminToken = (): string => localStorage.getItem(ADMIN_TOKEN_KEY) ?? '';
 export const setAdminToken = (t: string): void => localStorage.setItem(ADMIN_TOKEN_KEY, t);
+/** Forget the stored token, sending the dashboard back to its gate. Without this the
+ *  token persists indefinitely and #/admin never challenges again on that browser —
+ *  which reads as "the gate is broken" even though the server still enforces it. */
+export const clearAdminToken = (): void => localStorage.removeItem(ADMIN_TOKEN_KEY);
 
 export class AdminAuthError extends Error {
   constructor() {

@@ -46,6 +46,23 @@
   color: var(--text-faint);
   font-size: 12px;
 }
+/* Sits at the right of the top bar; mirrors .admin-back so the two framing controls
+   (leave the surface / forget the token) read as a pair. */
+.admin-lock {
+  margin-left: auto;
+  color: var(--text-muted);
+  background: none;
+  border: 1px solid var(--border);
+  font: inherit;
+  font-size: 13px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.admin-lock:hover {
+  background: var(--panel-hover);
+  color: var(--text);
+}
 .admin-flash {
   font-family: var(--mono);
   font-size: 12px;
