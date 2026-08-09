@@ -73,6 +73,23 @@ def status_of(exc: Exception) -> int | None:
     return None
 
 
+def is_daily_free_cap(exc: Exception) -> bool:
+    """True for OpenRouter's FREE-model daily cap being exhausted.
+
+    It arrives as a 429 and so looks transient, but it is the one 429 that will NOT
+    clear on a retry — the budget resets at 00:00 UTC, possibly hours away. Retrying it
+    is how the backfill turned a spent budget into ~20,000 wasted calls a day. Callers
+    should back off to the reset, not loop."""
+    marker = "openrouter_free_tier_daily"
+    body = getattr(exc, "body", None)
+    if isinstance(body, dict):
+        blob = body.get("error", body)
+        meta = blob.get("metadata") if isinstance(blob, dict) else None
+        if isinstance(meta, dict) and meta.get("limit_source") == marker:
+            return True
+    return marker in str(exc)
+
+
 def is_transient(exc: Exception) -> bool:
     """True if ``exc`` is worth retrying, False if retrying can only fail the same way.
 

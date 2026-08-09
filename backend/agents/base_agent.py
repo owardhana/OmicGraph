@@ -9,6 +9,7 @@ import logging
 from datetime import datetime, timezone
 
 from backend.db.neo4j_client import get_session
+from backend.llm.client import is_daily_free_cap
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +27,11 @@ class BaseAgent:
         }
 
     async def retry(self, func, *args, n: int = 2, **kwargs):
-        """Await func with up to n retries (n+1 attempts) and backoff."""
+        """Await func with up to n retries (n+1 attempts) and backoff.
+
+        Exits immediately on OpenRouter's free-model daily cap: that 429 does not clear
+        until 00:00 UTC, so the remaining attempts can only fail, and burning them is
+        what multiplied a spent budget into a round-the-clock retry storm."""
         last_exc: Exception | None = None
         for attempt in range(n + 1):
             try:
@@ -37,6 +42,12 @@ class BaseAgent:
                     "%s: attempt %d/%d failed: %s",
                     self.agent_name, attempt + 1, n + 1, exc,
                 )
+                if is_daily_free_cap(exc):
+                    logger.warning(
+                        "%s: free-model daily budget exhausted — not retrying until reset",
+                        self.agent_name,
+                    )
+                    raise
                 if attempt < n:
                     await asyncio.sleep(0.5 * (attempt + 1))
         assert last_exc is not None

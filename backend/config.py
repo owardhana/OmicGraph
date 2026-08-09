@@ -155,15 +155,23 @@ class Settings(BaseSettings):
     PUBMED_DELTA_RETMAX: int = 200    # max PMIDs per delta run (scaffold cap)
     EXTRACTION_CONFIDENCE_FLOOR: float = 0.5  # candidates below this are not surfaced
     EXTRACTION_EFETCH_BATCH: int = 100  # PMIDs per efetch call
-    # Bounded concurrency for the per-(sentence,pair) LLM verdict calls. Sized so enough
-    # calls are in flight to saturate the per-minute rate limit given the model's latency
-    # (~27s free-tier × 15/min ≈ 7 concurrent), not to burst past it — the rate limiter
-    # below is the real throttle. Serial (=1) is also fine for a tiny nightly delta.
-    EXTRACTION_LLM_CONCURRENCY: int = 8
-    # OpenRouter's FREE tier caps requests account-wide per minute (observed 16/min for
-    # free models). Pace call starts just under that so the backfill drips steadily
-    # instead of 429-storming and burning its budget on retries. Raise for a paid model.
-    EXTRACTION_LLM_RATE_PER_MIN: float = 15.0
+    # Bounded concurrency for the per-(sentence,pair) LLM verdict calls. At the daily-
+    # budget pace below a call starts every ~2 min against ~27s of latency, so in-flight
+    # depth barely matters now; keep it small so a burst can't outrun the rate limiter.
+    EXTRACTION_LLM_CONCURRENCY: int = 2
+    # Pace of LLM verdict calls. The binding constraint is NOT per-minute — it is
+    # OpenRouter's FREE-model *daily* cap, which the API reports on every 429:
+    #   'Rate limit exceeded: free-models-per-day-high-balance'
+    #   X-RateLimit-Limit: 1000, limit_source: openrouter_free_tier_daily
+    # 1000 requests/day, shared account-wide across EVERY :free model on the key — which
+    # since the chat switch means extraction, the citation cron AND the chatbot draw on
+    # one budget. The old 15/min was paced to a per-minute ceiling and ignored the daily
+    # one: 15/min = 21,600/day, so it spent the entire 1000 in ~67 minutes and then
+    # 429-stormed for the remaining ~23 hours (~1,080 failures/hour, round the clock,
+    # for ~4 usable verdicts/day) — and would now starve the chatbot for the same window.
+    # 0.45/min = ~648/day leaves ~350/day of headroom for chat and the citation cron.
+    # A paid slug has no daily cap; raise this freely when EXTRACTION_MODEL isn't :free.
+    EXTRACTION_LLM_RATE_PER_MIN: float = 0.45
     # Per-verdict LLM timeout. The OpenAI SDK default is ~10 min; a free reasoning model
     # can stream very slowly or sit queued, so bound it — a hung verdict is dropped (and
     # counted as an llm_error → chunk retried) rather than blocking a whole chunk. Only
