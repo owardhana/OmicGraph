@@ -35,7 +35,16 @@ class Settings(BaseSettings):
     NCBI_API_KEY: str = ""
 
     # Models (OpenRouter slugs)
-    SYNTHESIS_MODEL: str = "anthropic/claude-sonnet-4.6"
+    # Chat/synthesis model behind the ChatAgent. Same FREE Nemotron slug as EXTRACTION
+    # and CITATION_CHECK so every chat-completion call across the app costs $0. Verified
+    # against the live OpenRouter model list (ADR-0002 slug-verification discipline):
+    # this slug advertises `tools` + `tool_choice`, which the agent's tool loop requires
+    # — most `:free` slugs do not, so re-verify before swapping to another free model.
+    # It is a reasoning model on a shared, frequently-congested endpoint; the guards that
+    # make that acceptable for an interactive stream live in llm.client.chat_model_kwargs
+    # and the CHAT_* tunables below. Swap to a paid slug (e.g. anthropic/claude-sonnet-4.6)
+    # for lower latency and fewer 429s.
+    SYNTHESIS_MODEL: str = "nvidia/nemotron-3-ultra-550b-a55b:free"
     # Citation-relevance check (does this abstract discuss both entities?). Same FREE
     # Nemotron slug as EXTRACTION_MODEL so the nightly citation cron also costs $0 — the
     # check returns a tiny JSON verdict, well within a free model's ability. Reasoning
@@ -43,7 +52,22 @@ class Settings(BaseSettings):
     # Swap to a paid slug (e.g. anthropic/claude-haiku-4.5) for higher precision.
     CITATION_CHECK_MODEL: str = "nvidia/nemotron-3-ultra-550b-a55b:free"
     # Phase 2: embedding model for semantic search (ADR-0008). 1536-dim.
+    # NOTE: this one is NOT free and has no free Nemotron equivalent — Nemotron is a
+    # completion model, not an embedding model. So the `semantic_search` chat tool and
+    # the EmbeddingAgent still draw OpenRouter credit (~$0.02/M tokens) and are the only
+    # paths that stop working at a $0 balance.
     EMBEDDING_MODEL: str = "openai/text-embedding-3-small"
+
+    # --- Interactive chat guards ---
+    # SYNTHESIS_MODEL defaults to a free reasoning model on a shared endpoint, so the
+    # chat turn needs its own bounds. These are deliberately NOT the EXTRACTION_* ones:
+    # extraction is a batch job that can afford to wait, chat has someone watching it.
+    CHAT_LLM_TIMEOUT_S: float = 45.0   # per-turn budget (SDK default is ~10 min)
+    CHAT_MAX_TOKENS: int = 2048        # the free slug advertises a 1M context; cap output
+    CHAT_LLM_MAX_RETRIES: int = 2      # retries for a turn that fails BEFORE it streams text
+    # Reasoning models emit a chain-of-thought preamble; exclude it so it never lands in
+    # the user's token stream. Turn off only if a chosen model rejects the reasoning param.
+    CHAT_EXCLUDE_REASONING: bool = True
 
     # App config
     TISSUES: str = "whole_blood,liver,brain_prefrontal_cortex"

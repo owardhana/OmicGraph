@@ -4,11 +4,22 @@ A single AsyncOpenAI client pointed at OpenRouter. Model slugs come from config
 (verified canonical OpenRouter slugs — see docs/adr/0002-openrouter-model-slugs.md).
 """
 
-from openai import AsyncOpenAI
+import asyncio
+import logging
+
+from openai import APIConnectionError, APIStatusError, APITimeoutError, AsyncOpenAI
 
 from backend.config import settings
 
+logger = logging.getLogger(__name__)
+
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
+
+# Statuses worth another attempt: provider congestion, upstream hiccups, timeouts. The
+# free Nemotron endpoint returns 429 ("Worker local total request limit reached") under
+# load, which clears on its own. 401/402/403 are NOT here — a bad key or an empty credit
+# balance never fixes itself by retrying.
+_TRANSIENT_STATUS = frozenset({408, 409, 429, 500, 502, 503, 504})
 
 SYNTHESIS_MODEL = settings.SYNTHESIS_MODEL
 CITATION_CHECK_MODEL = settings.CITATION_CHECK_MODEL
@@ -31,6 +42,39 @@ def reasoning_model_kwargs() -> dict:
     """
     kwargs: dict = {"timeout": settings.EXTRACTION_LLM_TIMEOUT_S}
     if settings.EXTRACTION_EXCLUDE_REASONING:
+        kwargs["extra_body"] = {"reasoning": {"exclude": True}}
+    return kwargs
+
+
+def is_transient(exc: Exception) -> bool:
+    """True if ``exc`` is worth retrying, False if retrying can only fail the same way.
+
+    The distinction is user-visible: a congested free endpoint (429) clears, so "try
+    again" is honest advice; a 402 (out of credits) or 401 (bad key) does not, and
+    telling someone to retry one of those just wastes their time."""
+    if isinstance(exc, APIStatusError):
+        return exc.status_code in _TRANSIENT_STATUS
+    return isinstance(exc, (APITimeoutError, APIConnectionError))
+
+
+def chat_model_kwargs() -> dict:
+    """Defensive completion kwargs for the interactive chat turn.
+
+    SYNTHESIS_MODEL now points at the same free Nemotron slug as extraction, so the chat
+    stream needs comparable guards to reasoning_model_kwargs — but with chat-scoped
+    values, because a batch budget is the wrong shape for a stream someone is watching:
+
+    - ``timeout`` — CHAT_LLM_TIMEOUT_S, not the 120 s extraction budget.
+    - ``max_tokens`` — the free slug advertises a 1M-token context; an uncapped reasoning
+      model on that window is a latency and runaway-output hazard mid-stream.
+    - ``reasoning.exclude`` — keep the chain-of-thought preamble out of the token stream,
+      so it can't surface as ``<think>`` text in the user's answer.
+    """
+    kwargs: dict = {
+        "timeout": settings.CHAT_LLM_TIMEOUT_S,
+        "max_tokens": settings.CHAT_MAX_TOKENS,
+    }
+    if settings.CHAT_EXCLUDE_REASONING:
         kwargs["extra_body"] = {"reasoning": {"exclude": True}}
     return kwargs
 
@@ -78,31 +122,59 @@ async def stream_chat(model: str, messages: list[dict], tools: list[dict] | None
     """Stream one turn. Yields ('text', delta) for content tokens, then a final
     ('message', {role, content, tool_calls}) once the turn completes — so the caller
     can forward tokens live AND inspect tool_calls to drive the agent loop. Tool-call
-    fragments arrive as indexed deltas and are reassembled here."""
-    kwargs: dict = {"model": model, "messages": messages, "stream": True}
+    fragments arrive as indexed deltas and are reassembled here.
+
+    Retries a transient failure (the free endpoint's 429s, timeouts) up to
+    CHAT_LLM_MAX_RETRIES times, but ONLY while no text has been yielded yet: once a
+    token reaches the caller it has already reached the user's screen, and a fresh
+    attempt would restart the answer mid-sentence. Tool-call fragments are safe to
+    discard on retry — they are not surfaced until the closing ('message', ...)."""
+    kwargs: dict = {"model": model, "messages": messages, "stream": True,
+                    **chat_model_kwargs()}
     if tools:
         kwargs["tools"] = tools
         kwargs["tool_choice"] = "auto"
-    stream = await get_client().chat.completions.create(**kwargs)
 
-    content_parts: list[str] = []
-    tool_acc: dict[int, dict] = {}  # index -> {id, name, arguments(str)}
-    async for chunk in stream:
-        delta = chunk.choices[0].delta
-        if delta.content:
-            content_parts.append(delta.content)
-            yield ("text", delta.content)
-        for tc in (delta.tool_calls or []):
-            slot = tool_acc.setdefault(tc.index, {"id": "", "name": "", "arguments": ""})
-            if tc.id:
-                slot["id"] = tc.id
-            if tc.function and tc.function.name:
-                slot["name"] = tc.function.name
-            if tc.function and tc.function.arguments:
-                slot["arguments"] += tc.function.arguments
-    calls = [tool_acc[i] for i in sorted(tool_acc)]
-    yield ("message", {
-        "role": "assistant",
-        "content": "".join(content_parts) or None,
-        "tool_calls": calls,
-    })
+    attempts = settings.CHAT_LLM_MAX_RETRIES + 1
+    for attempt in range(attempts):
+        content_parts: list[str] = []
+        tool_acc: dict[int, dict] = {}  # index -> {id, name, arguments(str)}
+        streamed_text = False  # once True, this turn can no longer be restarted
+        try:
+            stream = await get_client().chat.completions.create(**kwargs)
+            async for chunk in stream:
+                # OpenRouter interleaves keep-alive / usage-only frames that carry no
+                # choices; indexing [0] on those raises IndexError mid-stream.
+                if not chunk.choices:
+                    continue
+                delta = chunk.choices[0].delta
+                if delta.content:
+                    content_parts.append(delta.content)
+                    streamed_text = True
+                    yield ("text", delta.content)
+                for tc in (delta.tool_calls or []):
+                    slot = tool_acc.setdefault(tc.index, {"id": "", "name": "", "arguments": ""})
+                    if tc.id:
+                        slot["id"] = tc.id
+                    if tc.function and tc.function.name:
+                        slot["name"] = tc.function.name
+                    if tc.function and tc.function.arguments:
+                        slot["arguments"] += tc.function.arguments
+        except Exception as exc:  # noqa: BLE001 — classified below, then re-raised
+            if streamed_text or not is_transient(exc) or attempt == attempts - 1:
+                raise
+            backoff = settings.EXTRACTION_HTTP_BACKOFF_S * (2 ** attempt)
+            logger.warning(
+                "stream_chat: attempt %d/%d failed (%s); retrying in %.1fs",
+                attempt + 1, attempts, exc, backoff,
+            )
+            await asyncio.sleep(backoff)
+            continue
+
+        calls = [tool_acc[i] for i in sorted(tool_acc)]
+        yield ("message", {
+            "role": "assistant",
+            "content": "".join(content_parts) or None,
+            "tool_calls": calls,
+        })
+        return
