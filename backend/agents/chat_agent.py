@@ -15,7 +15,13 @@ import logging
 
 from backend.agents.tools import TOOL_SCHEMAS, dispatch_tool
 from backend.db.queries.chat import load_history, save_turn
-from backend.llm.client import SYNTHESIS_MODEL, is_transient, status_of, stream_chat
+from backend.llm.client import (
+    SYNTHESIS_MODEL,
+    is_daily_free_cap,
+    is_transient,
+    status_of,
+    stream_chat,
+)
 from backend.llm.prompts.chat import CHAT_SYSTEM_PROMPT
 
 logger = logging.getLogger(__name__)
@@ -34,6 +40,11 @@ def _error_message(exc: Exception) -> str:
     if status in (401, 402, 403):
         return ("The assistant is unavailable — the LLM account needs attention "
                 "(API key or billing). Retrying won't help.")
+    # Checked before the generic transient branch: this one IS a 429, but it clears at
+    # 00:00 UTC rather than in seconds, so "try again in a moment" would be a lie.
+    if is_daily_free_cap(exc):
+        return ("The free-model daily quota for this deployment is used up. It resets "
+                "at 00:00 UTC — the assistant will work again after that.")
     if is_transient(exc):
         return ("The model endpoint is busy right now. Please try again in a moment.")
     return "The assistant hit an error. Please retry."
