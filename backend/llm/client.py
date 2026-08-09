@@ -7,7 +7,7 @@ A single AsyncOpenAI client pointed at OpenRouter. Model slugs come from config
 import asyncio
 import logging
 
-from openai import APIConnectionError, APIStatusError, APITimeoutError, AsyncOpenAI
+from openai import APIConnectionError, APITimeoutError, AsyncOpenAI
 
 from backend.config import settings
 
@@ -46,15 +46,43 @@ def reasoning_model_kwargs() -> dict:
     return kwargs
 
 
+def status_of(exc: Exception) -> int | None:
+    """The HTTP-ish status behind an OpenAI SDK error, from wherever it actually landed.
+
+    Two different shapes reach us and only one has ``status_code``:
+
+    - a failure on the response envelope -> ``APIStatusError``, ``.status_code`` set;
+    - a failure delivered *inside* an HTTP 200 stream -> a bare ``APIError`` with no
+      ``.status_code`` at all; the real code sits in ``.code`` / ``.body['code']``.
+      This is OpenRouter's shape for an upstream provider fault, e.g.
+      ``{'code': 502, 'message': 'Upstream error from Nvidia: ResourceExhausted:
+      Worker local total request limit reached (33/32)'}``.
+
+    Reading only ``status_code`` classifies every mid-stream provider hiccup as
+    permanent, which is exactly backwards — those are the ones that clear on retry."""
+    status = getattr(exc, "status_code", None)
+    if isinstance(status, int):
+        return status
+    for candidate in (getattr(exc, "code", None),
+                      (getattr(exc, "body", None) or {}).get("code")
+                      if isinstance(getattr(exc, "body", None), dict) else None):
+        if isinstance(candidate, int):
+            return candidate
+        if isinstance(candidate, str) and candidate.isdigit():
+            return int(candidate)
+    return None
+
+
 def is_transient(exc: Exception) -> bool:
     """True if ``exc`` is worth retrying, False if retrying can only fail the same way.
 
-    The distinction is user-visible: a congested free endpoint (429) clears, so "try
-    again" is honest advice; a 402 (out of credits) or 401 (bad key) does not, and
-    telling someone to retry one of those just wastes their time."""
-    if isinstance(exc, APIStatusError):
-        return exc.status_code in _TRANSIENT_STATUS
-    return isinstance(exc, (APITimeoutError, APIConnectionError))
+    The distinction is user-visible: a congested free endpoint (429/502) clears, so
+    "try again" is honest advice; a 402 (out of credits) or 401 (bad key) does not, and
+    telling someone to retry one of those just sends them round a loop."""
+    if isinstance(exc, (APITimeoutError, APIConnectionError)):
+        return True
+    status = status_of(exc)
+    return status is not None and status in _TRANSIENT_STATUS
 
 
 def chat_model_kwargs() -> dict:

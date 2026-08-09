@@ -15,7 +15,7 @@ import logging
 
 from backend.agents.tools import TOOL_SCHEMAS, dispatch_tool
 from backend.db.queries.chat import load_history, save_turn
-from backend.llm.client import SYNTHESIS_MODEL, is_transient, stream_chat
+from backend.llm.client import SYNTHESIS_MODEL, is_transient, status_of, stream_chat
 from backend.llm.prompts.chat import CHAT_SYSTEM_PROMPT
 
 logger = logging.getLogger(__name__)
@@ -30,7 +30,7 @@ def _error_message(exc: Exception) -> str:
     where congestion is the common failure and does clear — but a 402 (out of credits)
     or 401 (bad key) will fail identically forever, and telling someone to retry one of
     those sends them into a loop instead of to the actual fix."""
-    status = getattr(exc, "status_code", None)
+    status = status_of(exc)
     if status in (401, 402, 403):
         return ("The assistant is unavailable — the LLM account needs attention "
                 "(API key or billing). Retrying won't help.")
