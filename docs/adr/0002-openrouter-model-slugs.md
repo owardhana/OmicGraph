@@ -35,6 +35,11 @@ This is the same models the spec intended (Sonnet 4.6, Haiku 4.5) — only the s
 format changes to what OpenRouter accepts. Primary-source evidence (live 400 +
 model list) overrides the spec's literal string.
 
+> **Update (2026-07-21):** `CITATION_CHECK_MODEL` default was switched from
+> `anthropic/claude-haiku-4.5` to the free `nvidia/nemotron-3-ultra-550b-a55b:free`
+> slug (same as `EXTRACTION_MODEL`) so the nightly citation cron costs $0. The haiku
+> slug above is still the correct/verified slug if swapping back to a paid model.
+
 ## Consequences
 
 - Model IDs are read from config, so Phase 4's LLM client needs no special-casing.

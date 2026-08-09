@@ -35,10 +35,39 @@ class Settings(BaseSettings):
     NCBI_API_KEY: str = ""
 
     # Models (OpenRouter slugs)
-    SYNTHESIS_MODEL: str = "anthropic/claude-sonnet-4.6"
-    CITATION_CHECK_MODEL: str = "anthropic/claude-haiku-4.5"
+    # Chat/synthesis model behind the ChatAgent. Same FREE Nemotron slug as EXTRACTION
+    # and CITATION_CHECK so every chat-completion call across the app costs $0. Verified
+    # against the live OpenRouter model list (ADR-0002 slug-verification discipline):
+    # this slug advertises `tools` + `tool_choice`, which the agent's tool loop requires
+    # — most `:free` slugs do not, so re-verify before swapping to another free model.
+    # It is a reasoning model on a shared, frequently-congested endpoint; the guards that
+    # make that acceptable for an interactive stream live in llm.client.chat_model_kwargs
+    # and the CHAT_* tunables below. Swap to a paid slug (e.g. anthropic/claude-sonnet-4.6)
+    # for lower latency and fewer 429s.
+    SYNTHESIS_MODEL: str = "nvidia/nemotron-3-ultra-550b-a55b:free"
+    # Citation-relevance check (does this abstract discuss both entities?). Same FREE
+    # Nemotron slug as EXTRACTION_MODEL so the nightly citation cron also costs $0 — the
+    # check returns a tiny JSON verdict, well within a free model's ability. Reasoning
+    # exclusion + a bounded timeout are applied via llm.client.reasoning_model_kwargs.
+    # Swap to a paid slug (e.g. anthropic/claude-haiku-4.5) for higher precision.
+    CITATION_CHECK_MODEL: str = "nvidia/nemotron-3-ultra-550b-a55b:free"
     # Phase 2: embedding model for semantic search (ADR-0008). 1536-dim.
+    # NOTE: this one is NOT free and has no free Nemotron equivalent — Nemotron is a
+    # completion model, not an embedding model. So the `semantic_search` chat tool and
+    # the EmbeddingAgent still draw OpenRouter credit (~$0.02/M tokens) and are the only
+    # paths that stop working at a $0 balance.
     EMBEDDING_MODEL: str = "openai/text-embedding-3-small"
+
+    # --- Interactive chat guards ---
+    # SYNTHESIS_MODEL defaults to a free reasoning model on a shared endpoint, so the
+    # chat turn needs its own bounds. These are deliberately NOT the EXTRACTION_* ones:
+    # extraction is a batch job that can afford to wait, chat has someone watching it.
+    CHAT_LLM_TIMEOUT_S: float = 45.0   # per-turn budget (SDK default is ~10 min)
+    CHAT_MAX_TOKENS: int = 2048        # the free slug advertises a 1M context; cap output
+    CHAT_LLM_MAX_RETRIES: int = 2      # retries for a turn that fails BEFORE it streams text
+    # Reasoning models emit a chain-of-thought preamble; exclude it so it never lands in
+    # the user's token stream. Turn off only if a chosen model rejects the reasoning param.
+    CHAT_EXCLUDE_REASONING: bool = True
 
     # App config
     TISSUES: str = "whole_blood,liver,brain_prefrontal_cortex"
@@ -102,13 +131,66 @@ class Settings(BaseSettings):
     # Master switch. OFF by default: the extractor spends on NCBI E-utils + the LLM,
     # so the admin trigger refuses unless this is true. Nothing runs unattended.
     EXTRACTION_AGENT_ENABLED: bool = False
-    # Cheap deterministic model for the per-sentence relation verdict (haiku by default).
-    EXTRACTION_MODEL: str = "anthropic/claude-haiku-4.5"
-    PUBMED_DELTA_TERM: str = "humans[MeSH Terms]"  # broad biomedical delta scope
+    # Model for the per-sentence relation verdict. Default is a FREE OpenRouter slug
+    # (NVIDIA Nemotron 3 Ultra) so the always-on backfill costs $0 — verified present
+    # in the live OpenRouter model list (ADR-0002 slug-verification discipline). A
+    # free/reasoning model trades some yield (weaker JSON adherence, rate limits) for
+    # zero cost; the pipeline fails safe on unparseable output (drops, never corrupts).
+    # Swap to a paid slug (e.g. anthropic/claude-haiku-4.5) for higher-precision runs.
+    EXTRACTION_MODEL: str = "nvidia/nemotron-3-ultra-550b-a55b:free"
+    # Reasoning models emit a chain-of-thought preamble before the JSON verdict; ask
+    # OpenRouter to exclude it so the parser sees clean output. No-op on non-reasoning
+    # models. Turn off only if a chosen model rejects the reasoning param.
+    EXTRACTION_EXCLUDE_REASONING: bool = True
+    PUBMED_DELTA_TERM: str = "humans[MeSH Terms]"  # broad biomedical corpus scope
+    # E-utils date field the cursor windows walk. Default 'edat' (Entrez date = when the
+    # record was ADDED to PubMed): a precise, per-record, monotonic key. NOT 'pdat'
+    # (publication date) — PubMed defaults year-only pub dates to Jan 1, so 'pdat'
+    # single-day counts pile up (~123k on YYYY/01/01 vs ~4k for edat), blowing past the
+    # esearch 9,999 no-history cap and silently truncating the backfill. edat also catches
+    # late-indexed papers a pub-date walk would miss. The actual publication date is still
+    # read from each article's metadata; edat is only the windowing/partition key.
+    EXTRACTION_DATE_TYPE: str = "edat"
     PUBMED_DELTA_DAYS: int = 1        # esearch reldate window (nightly = 1)
     PUBMED_DELTA_RETMAX: int = 200    # max PMIDs per delta run (scaffold cap)
     EXTRACTION_CONFIDENCE_FLOOR: float = 0.5  # candidates below this are not surfaced
     EXTRACTION_EFETCH_BATCH: int = 100  # PMIDs per efetch call
+    # Bounded concurrency for the per-(sentence,pair) LLM verdict calls. At the daily-
+    # budget pace below a call starts every ~2 min against ~27s of latency, so in-flight
+    # depth barely matters now; keep it small so a burst can't outrun the rate limiter.
+    EXTRACTION_LLM_CONCURRENCY: int = 2
+    # Pace of LLM verdict calls. The binding constraint is NOT per-minute — it is
+    # OpenRouter's FREE-model *daily* cap, which the API reports on every 429:
+    #   'Rate limit exceeded: free-models-per-day-high-balance'
+    #   X-RateLimit-Limit: 1000, limit_source: openrouter_free_tier_daily
+    # 1000 requests/day, shared account-wide across EVERY :free model on the key — which
+    # since the chat switch means extraction, the citation cron AND the chatbot draw on
+    # one budget. The old 15/min was paced to a per-minute ceiling and ignored the daily
+    # one: 15/min = 21,600/day, so it spent the entire 1000 in ~67 minutes and then
+    # 429-stormed for the remaining ~23 hours (~1,080 failures/hour, round the clock,
+    # for ~4 usable verdicts/day) — and would now starve the chatbot for the same window.
+    # 0.45/min = ~648/day leaves ~350/day of headroom for chat and the citation cron.
+    # A paid slug has no daily cap; raise this freely when EXTRACTION_MODEL isn't :free.
+    EXTRACTION_LLM_RATE_PER_MIN: float = 0.45
+    # Per-verdict LLM timeout. The OpenAI SDK default is ~10 min; a free reasoning model
+    # can stream very slowly or sit queued, so bound it — a hung verdict is dropped (and
+    # counted as an llm_error → chunk retried) rather than blocking a whole chunk. Only
+    # applied to the extraction call, not chat/synthesis.
+    EXTRACTION_LLM_TIMEOUT_S: float = 120.0
+
+    # --- Feature 2 P3 — date-cursor pipeline (nightly catch-up + historical backfill) ---
+    # Both directions walk PubMed by publication date in chunks, persisting progress on a
+    # singleton :ExtractionCursor node so a crash/redeploy resumes at chunk granularity
+    # (stage_verdict's MERGE is idempotent, so redoing a partial chunk is safe).
+    EXTRACTION_BACKFILL_FLOOR_DATE: str = "2005-01-01"  # oldest pubdate the backfill will reach
+    EXTRACTION_BACKFILL_CHUNK_DAYS: int = 7   # backward-walk window width (probe-shrunk if too dense)
+    EXTRACTION_FORWARD_CHUNK_DAYS: int = 1    # nightly forward-walk window width
+    EXTRACTION_FORWARD_LAG_DAYS: int = 2      # trailing buffer for PubMed indexing lag (don't chase "today")
+    EXTRACTION_MAX_PMIDS_PER_CHUNK: int = 5000  # halve the window until a chunk's esearch count fits this
+    # HTTP retry/backoff for NCBI E-utils (honours 429 Retry-After); LLM calls reuse this.
+    EXTRACTION_HTTP_MAX_RETRIES: int = 4
+    EXTRACTION_HTTP_BACKOFF_S: float = 1.0    # base backoff, exponential per attempt
+    EXTRACTION_BACKFILL_CRON_HOUR: int = 3    # nightly forward-catchup cron hour (UTC)
 
     # --- Feature 2 P2 — promotion + provenance-tier discount (ADR-0013) ---
     # Promoted literature edges conduct less signal than canonical ones (a

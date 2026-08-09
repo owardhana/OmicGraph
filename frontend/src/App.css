@@ -57,8 +57,19 @@
   font-weight: 650;
   font-size: 18px;
   letter-spacing: 0.2px;
-  color: var(--text);
+  /* Light-on-dark: the wordmark sits on the 3D canvas, not on a panel, so --text
+     (#2a2a26, meant for the light panels) rendered it near-invisible. #f2efe8 is the
+     same light text the landing page and ApiDocs use — and it links to the landing. */
+  color: #f2efe8;
   user-select: none;
+  /* It's an <a> to the landing page — keep the wordmark's look, not a link's. */
+  text-decoration: none;
+  cursor: pointer;
+  transition: opacity 0.15s ease;
+}
+.brand:hover,
+.brand:focus-visible {
+  opacity: 0.7;
 }
 
 /* ---- search ---- */

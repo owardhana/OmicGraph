@@ -217,7 +217,11 @@ export default function App() {
 
       <header className="topbar">
         <div className="topbar-left">
-          <div className="brand">OmicGraph</div>
+          {/* Back to the landing page, matching the ApiDocs wordmark: the hash router
+              in main.tsx treats anything that isn't #/app|#/api|#/admin as 'landing'. */}
+          <a className="brand" href="#/" title="Back to the OmicGraph home page">
+            OmicGraph
+          </a>
         </div>
         <LayerToggle visibleLayers={visibleLayers} onToggle={handleToggleLayer} />
         <TissueFilter active={activeTissue} onChange={handleTissueChange} />

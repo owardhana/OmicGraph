@@ -1,4 +1,4 @@
-"""System prompt for the citation relevance check (haiku model).
+"""System prompt for the citation relevance check (CITATION_CHECK_MODEL).
 
 Given a PubMed abstract and two entity names, decide whether the abstract is
 about a relationship between those two entities. The model must NOT assert
