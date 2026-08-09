@@ -9,4 +9,8 @@ pydantic-settings
 pytest
 pytest-asyncio
 python-dotenv
-mcp  # MCP server for public read-only graph access (ADR-0017, backend/mcp_server.py)
+# MCP server for public read-only graph access (ADR-0017, backend/mcp_server.py).
+# Pinned <2: mcp 2.0 removed mcp.server.fastmcp (FastMCP is now mcp.server.mcpserver),
+# so an unpinned rebuild crash-loops the backend on import. Lift the pin only together
+# with porting backend/mcp_server.py to the 2.x API.
+mcp>=1.2,<2
